@@ -3,18 +3,26 @@ import json
 from typing import Dict, List, Optional, Any
 
 class APIManager:
-    """API管理类，处理所有与后端接口的交互"""
+    """简化的API管理类 - 以用户数据为中心的粗粒度操作"""
     
     def __init__(self, base_url: str = "http://localhost:8000/api"):
         self.base_url = base_url
         self.session = requests.Session()
-        # 可以在这里设置默认的headers，如认证信息
+        self.user_id = None  # 为登录功能预留
+        
+        # 设置默认headers
         self.session.headers.update({
             'Content-Type': 'application/json',
             'Accept': 'application/json'
         })
     
-    def _make_request(self, method: str, url: str, data: Optional[Dict] = None) -> Dict[str, Any]:
+    def set_user_auth(self, user_id: str, token: Optional[str] = None):
+        """设置用户认证信息（为登录功能预留）"""
+        self.user_id = user_id
+        if token:
+            self.session.headers.update({'Authorization': f'Bearer {token}'})
+    
+    def _make_request(self, method: str, url: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """统一的请求处理方法"""
         url = f"{self.base_url}/{url.lstrip('/')}"
         
@@ -34,181 +42,177 @@ class APIManager:
             return response.json()
             
         except requests.exceptions.RequestException as e:
-            # 这里可以添加更详细的错误处理
             raise Exception(f"API请求失败: {str(e)}")
     
-    # ==================== 一级Tab操作 ====================
+    # ==================== 核心数据操作（粗粒度） ====================
     
-    def get_primary_tabs(self) -> List[str]:
-        """获取所有一级Tab"""
-        result = self._make_request('GET', '/tabs/primary')
-        return result.get('tabs', [])
-    
-    def create_primary_tab(self, tab_name: str) -> bool:
-        """创建一级Tab"""
-        data = {'tab_name': tab_name}
-        result = self._make_request('POST', '/tabs/primary', data)
-        return result.get('success', False)
-    
-    def update_primary_tab(self, old_name: str, new_name: str) -> bool:
-        """更新一级Tab名称"""
-        data = {'old_name': old_name, 'new_name': new_name}
-        result = self._make_request('PUT', '/tabs/primary', data)
-        return result.get('success', False)
-    
-    def delete_primary_tab(self, tab_name: str) -> bool:
-        """删除一级Tab"""
-        data = {'tab_name': tab_name}
-        result = self._make_request('DELETE', '/tabs/primary', data)
-        return result.get('success', False)
-    
-    # ==================== 二级Tab操作 ====================
-    
-    def get_secondary_tabs(self, primary_tab: str) -> List[str]:
-        """获取指定一级Tab下的所有二级Tab"""
-        result = self._make_request('GET', f'/tabs/secondary/{primary_tab}')
-        return result.get('tabs', [])
-    
-    def create_secondary_tab(self, primary_tab: str, tab_name: str) -> bool:
-        """创建二级Tab"""
-        data = {'primary_tab': primary_tab, 'tab_name': tab_name}
-        result = self._make_request('POST', '/tabs/secondary', data)
-        return result.get('success', False)
-    
-    def update_secondary_tab(self, primary_tab: str, old_name: str, new_name: str) -> bool:
-        """更新二级Tab名称"""
-        data = {'primary_tab': primary_tab, 'old_name': old_name, 'new_name': new_name}
-        result = self._make_request('PUT', '/tabs/secondary', data)
-        return result.get('success', False)
-    
-    def delete_secondary_tab(self, primary_tab: str, tab_name: str) -> bool:
-        """删除二级Tab"""
-        data = {'primary_tab': primary_tab, 'tab_name': tab_name}
-        result = self._make_request('DELETE', '/tabs/secondary', data)
-        return result.get('success', False)
-    
-    # ==================== 话术分类操作 ====================
-    
-    def get_categories(self, primary_tab: str, secondary_tab: str) -> List[str]:
-        """获取指定Tab下的所有话术分类"""
-        result = self._make_request('GET', f'/categories/{primary_tab}/{secondary_tab}')
-        return result.get('categories', [])
-    
-    def create_category(self, primary_tab: str, secondary_tab: str, category_name: str) -> bool:
-        """创建话术分类"""
-        data = {
-            'primary_tab': primary_tab,
-            'secondary_tab': secondary_tab,
-            'category_name': category_name
-        }
-        result = self._make_request('POST', '/categories', data)
-        return result.get('success', False)
-    
-    def update_category(self, primary_tab: str, secondary_tab: str, old_name: str, new_name: str) -> bool:
-        """更新话术分类名称"""
-        data = {
-            'primary_tab': primary_tab,
-            'secondary_tab': secondary_tab,
-            'old_name': old_name,
-            'new_name': new_name
-        }
-        result = self._make_request('PUT', '/categories', data)
-        return result.get('success', False)
-    
-    def delete_category(self, primary_tab: str, secondary_tab: str, category_name: str) -> bool:
-        """删除话术分类"""
-        data = {
-            'primary_tab': primary_tab,
-            'secondary_tab': secondary_tab,
-            'category_name': category_name
-        }
-        result = self._make_request('DELETE', '/categories', data)
-        return result.get('success', False)
-    
-    # ==================== 话术内容操作 ====================
-    
-    def get_scripts(self, primary_tab: str, secondary_tab: str, category: str) -> List[str]:
-        """获取指定分类下的所有话术"""
-        result = self._make_request('GET', f'/scripts/{primary_tab}/{secondary_tab}/{category}')
-        return result.get('scripts', [])
-    
-    def get_all_scripts(self, primary_tab: str, secondary_tab: str) -> Dict[str, List[str]]:
-        """获取指定Tab下的所有话术数据"""
-        result = self._make_request('GET', f'/scripts/{primary_tab}/{secondary_tab}')
-        return result.get('data', {})
-    
-    def create_script(self, primary_tab: str, secondary_tab: str, category: str, script_content: str) -> bool:
-        """创建话术"""
-        data = {
-            'primary_tab': primary_tab,
-            'secondary_tab': secondary_tab,
-            'category': category,
-            'script_content': script_content
-        }
-        result = self._make_request('POST', '/scripts', data)
-        return result.get('success', False)
-    
-    def update_script(self, primary_tab: str, secondary_tab: str, category: str, 
-                     old_content: str, new_content: str) -> bool:
-        """更新话术内容"""
-        data = {
-            'primary_tab': primary_tab,
-            'secondary_tab': secondary_tab,
-            'category': category,
-            'old_content': old_content,
-            'new_content': new_content
-        }
-        result = self._make_request('PUT', '/scripts', data)
-        return result.get('success', False)
-    
-    def delete_script(self, primary_tab: str, secondary_tab: str, category: str, script_content: str) -> bool:
-        """删除话术"""
-        data = {
-            'primary_tab': primary_tab,
-            'secondary_tab': secondary_tab,
-            'category': category,
-            'script_content': script_content
-        }
-        result = self._make_request('DELETE', '/scripts', data)
-        return result.get('success', False)
-    
-    # ==================== 搜索操作 ====================
-    
-    def search_scripts(self, keyword: str, primary_tab: Optional[str] = None) -> Dict[str, Any]:
-        """搜索话术"""
-        data = {'keyword': keyword}
-        if primary_tab:
-            data['primary_tab'] = primary_tab
+    def get_user_data(self, user_id: str = None) -> Dict[str, Any]:
+        """获取用户完整数据
         
-        result = self._make_request('POST', '/scripts/search', data)
-        return result.get('results', {})
-    
-    # ==================== 配置操作 ====================
-    
-    def get_config(self) -> Dict[str, Any]:
-        """获取用户配置"""
-        result = self._make_request('GET', '/config')
-        return result.get('config', {})
-    
-    def update_config(self, config: Dict[str, Any]) -> bool:
-        """更新用户配置"""
-        result = self._make_request('PUT', '/config', config)
-        return result.get('success', False)
-    
-    # ==================== 批量操作 ====================
-    
-    def batch_import_scripts(self, primary_tab: str, secondary_tab: str, 
-                           scripts_data: Dict[str, List[str]]) -> bool:
-        """批量导入话术数据"""
-        data = {
-            'primary_tab': primary_tab,
-            'secondary_tab': secondary_tab,
-            'scripts_data': scripts_data
+        返回格式:
+        {
+            "user_id": "user123",
+            "scripts_data": {
+                "公司话术": {
+                    "常用": {
+                        "问候语": ["您好，很高兴为您服务！", ...],
+                        "结束语": ["感谢您的咨询！", ...]
+                    },
+                    "产品介绍": {...}
+                },
+                "小组话术": {...},
+                "私人话术": {...}
+            },
+            "last_updated": "2024-01-01T12:00:00Z"
         }
-        result = self._make_request('POST', '/scripts/batch_import', data)
+        """
+        uid = user_id or self.user_id or "default"
+        result = self._make_request('GET', f'/user/{uid}/data')
+        return result.get('data', {})
+    
+    def save_user_data(self, data: Dict[str, Any], user_id: str = None) -> bool:
+        """保存用户完整数据
+        
+        参数:
+        data: 完整的用户数据结构
+        """
+        uid = user_id if user_id is not None else (self.user_id if self.user_id is not None else "default")
+        request_data = {
+            'user_id': uid,
+            'data': data
+        }
+        result = self._make_request('PUT', f'/user/{uid}/data', request_data)
+        return result.get('success', False)
+
+    
+    # ==================== 用户管理（为登录功能预留） ====================
+    
+    def login(self, username: str, password: str) -> Dict[str, Any]:
+        """用户登录"""
+        request_data = {
+            'username': username,
+            'password': password
+        }
+        result = self._make_request('POST', '/auth/login', request_data)
+        
+        if result.get('success'):
+            user_id_result = result.get('user_id')
+            token_result = result.get('token')
+            if user_id_result:
+                self.set_user_auth(user_id_result, token_result)
+        
+        return result
+    
+    def logout(self) -> bool:
+        """用户登出"""
+        result = self._make_request('POST', '/auth/logout')
+        if result.get('success'):
+            self.user_id = None
+            if 'Authorization' in self.session.headers:
+                del self.session.headers['Authorization']
         return result.get('success', False)
     
-    def export_all_data(self) -> Dict[str, Any]:
-        """导出所有数据"""
-        result = self._make_request('GET', '/export/all')
-        return result.get('data', {})
+    # ==================== 文件导入导出（格式转换） ====================
+    
+    def upload_and_convert_file(self, file_path: str, user_id: str = None) -> Optional[Dict[str, Any]]:
+        """上传文件并转换为JSON格式
+        
+        支持的文件格式：
+        - Excel (.xlsx, .xls)
+        - CSV (.csv)
+        - JSON (.json)
+        
+        返回转换后的JSON数据结构
+        """
+        uid = user_id if user_id is not None else (self.user_id if self.user_id is not None else "default")
+        
+        try:
+            # 使用multipart/form-data上传文件
+            url = f"{self.base_url}/file/upload-convert"
+            
+            with open(file_path, 'rb') as f:
+                files = {'file': f}
+                data = {'user_id': uid}
+                
+                # 临时移除Content-Type header让requests自动设置multipart
+                original_headers = dict(self.session.headers)
+                if 'Content-Type' in self.session.headers:
+                    del self.session.headers['Content-Type']
+                
+                response = self.session.post(url, files=files, data=data)
+                
+                # 恢复原始headers
+                self.session.headers.update(original_headers)
+                
+                response.raise_for_status()
+                result = response.json()
+                
+                if result.get('success'):
+                    return result.get('data')
+                else:
+                    print(f"文件转换失败: {result.get('message', '未知错误')}")
+                    return None
+                    
+        except requests.exceptions.RequestException as e:
+            print(f"文件上传失败: {str(e)}")
+            return None
+        except Exception as e:
+            print(f"文件处理失败: {str(e)}")
+            return None
+    
+    def export_and_convert_data(self, data: Dict[str, Any], file_path: str, 
+                               file_format: str = "json", user_id: str = None) -> bool:
+        """导出数据并转换为指定格式
+        
+        支持的导出格式：
+        - json: JSON文件
+        - excel: Excel文件 (.xlsx)
+        - csv: CSV文件
+        
+        参数:
+        data: 要导出的数据
+        file_path: 导出文件路径
+        file_format: 导出格式 (json/excel/csv)
+        """
+        uid = user_id or self.user_id or "default"
+        
+        try:
+            request_data = {
+                'user_id': uid,
+                'data': data,
+                'format': file_format.lower()
+            }
+            
+            response = self.session.post(f"{self.base_url}/file/export-convert", json=request_data)
+            response.raise_for_status()
+            
+            # 如果返回的是文件内容，直接保存
+            if response.headers.get('content-type', '').startswith('application/'):
+                with open(file_path, 'wb') as f:
+                    f.write(response.content)
+                return True
+            else:
+                # 如果返回的是JSON响应
+                result = response.json()
+                if result.get('success'):
+                    # 如果有文件URL，下载文件
+                    if 'file_url' in result:
+                        download_response = self.session.get(result['file_url'])
+                        download_response.raise_for_status()
+                        with open(file_path, 'wb') as f:
+                            f.write(download_response.content)
+                        return True
+                    else:
+                        print(f"导出失败: {result.get('message', '未知错误')}")
+                        return False
+                else:
+                    print(f"导出失败: {result.get('message', '未知错误')}")
+                    return False
+                    
+        except requests.exceptions.RequestException as e:
+            print(f"文件导出失败: {str(e)}")
+            return False
+        except Exception as e:
+            print(f"文件处理失败: {str(e)}")
+            return False
+    

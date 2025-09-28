@@ -1,4 +1,7 @@
 {
-  "send_mode": "添加到输入框",
-  "always_on_top": true
+  "send_mode": "直接发送",
+  "always_on_top": true,
+  "api_base_url": "http://localhost:8000/api",
+  "current_user_id": null,
+  "is_logged_in": false
 }

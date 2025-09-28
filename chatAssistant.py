@@ -9,6 +9,7 @@ import win32gui
 import win32con
 from threading import Timer, Thread
 from api_manager import APIManager
+from data_adapter import DataAdapter
 
 class ChineseInputDialog:
     """中文输入对话框"""
@@ -112,12 +113,6 @@ class AssistantOptimized:
         self.current_primary_tab = "公司话术"
         self.current_secondary_tab = "常用"
         
-        # 初始化Tab数据结构
-        self.init_tab_structure()
-        
-        # 加载数据（这会更新tab_data和当前Tab设置）
-        self.scripts = self.load_scripts()
-        
         # 目标窗口跟踪
         self.target_window = None
         self.target_title = "无"
@@ -129,17 +124,27 @@ class AssistantOptimized:
         self.send_mode = "直接发送"  # 默认模式
         self.always_on_top = True  # 默认置顶
         
-        # 数据源配置 (True: 使用API, False: 使用本地文件)
-        self.use_api = False
+        # 用户登录状态
+        self.current_user_id = None
+        self.is_logged_in = False
+        
+        # API配置
         self.api_base_url = "http://localhost:8000/api"
         
-        # 初始化API管理器
+        # 初始化组件
         self.api_manager = None
+        self.data_adapter = None
         self.config_file = "config.json"
         self.load_config()
         
-        # 初始化数据源
-        self.init_data_source()
+        # 初始化数据适配器
+        self.init_data_adapter()
+        
+        # 初始化Tab数据结构
+        self.init_tab_structure()
+        
+        # 加载数据（这会更新tab_data和当前Tab设置）
+        self.scripts = self.load_scripts()
         
         # 创建界面
         self.create_widgets()
@@ -171,61 +176,40 @@ class AssistantOptimized:
                 }
             }
     
+    def load_data_from_adapter(self):
+        """从数据适配器加载数据"""
+        if self.data_adapter:
+            # 获取完整的话术数据结构
+            scripts_data = self.data_adapter.get_scripts_data()
+            if scripts_data:
+                self.tab_data = scripts_data
+                # 确保当前Tab存在
+                if self.current_primary_tab not in self.tab_data:
+                    self.current_primary_tab = list(self.tab_data.keys())[0]
+                if self.current_secondary_tab not in self.tab_data[self.current_primary_tab]:
+                    self.current_secondary_tab = list(self.tab_data[self.current_primary_tab].keys())[0]
+            else:
+                # 如果没有数据，使用默认结构
+                self.init_tab_structure()
+            
+            # 加载本地配置
+            config = self.data_adapter.get_config()
+            if config:
+                self.send_mode = config.get('send_mode', self.send_mode)
+                self.always_on_top = config.get('always_on_top', self.always_on_top)
+                self.current_primary_tab = config.get('current_primary_tab', self.current_primary_tab)
+                self.current_secondary_tab = config.get('current_secondary_tab', self.current_secondary_tab)
+            
+            # 返回当前选中Tab的数据
+            return self.get_current_tab_data()
+        else:
+            # 如果没有数据适配器，使用默认数据
+            self.init_tab_structure()
+            return self.get_current_tab_data()
+
     def load_scripts(self):
-        """加载话术数据"""
-        if os.path.exists(self.data_file):
-            try:
-                with open(self.data_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    # 检查是否是新的Tab结构
-                    if isinstance(data, dict) and any(key in data for key in ["公司话术", "小组话术", "私人话术"]):
-                        self.tab_data = data
-                        # 确保当前Tab存在
-                        if self.current_primary_tab not in self.tab_data:
-                            self.current_primary_tab = list(self.tab_data.keys())[0]
-                        if self.current_secondary_tab not in self.tab_data[self.current_primary_tab]:
-                            self.current_secondary_tab = list(self.tab_data[self.current_primary_tab].keys())[0]
-                        # 返回当前选中Tab的数据
-                        return self.get_current_tab_data()
-                    else:
-                        # 旧格式数据，迁移到新结构
-                        self.migrate_old_data(data)
-                        return self.get_current_tab_data()
-            except Exception as e:
-                print(f"加载数据失败: {e}")
-        
-        # 默认数据
-        default_data = {
-            "问候语": [
-                "您好，很高兴为您服务！",
-                "欢迎咨询，请问有什么可以帮助您的吗？",
-                "您好，我是客服小助手，有什么问题可以随时问我哦~"
-            ],
-            "常见问题": [
-                "请稍等，我帮您查询一下相关信息",
-                "这个问题我需要为您详细解答一下",
-                "根据您的情况，我建议您这样处理",
-                "如果还有其他问题，请随时联系我们"
-            ],
-            "快捷回复": [
-                "好的，明白了",
-                "收到，正在处理",
-                "稍等一下",
-                "没问题",
-                "可以的",
-                "👍"
-            ],
-            "结束语": [
-                "感谢您的咨询，祝您生活愉快！",
-                "如果没有其他问题，本次服务就到这里了，谢谢！",
-                "很高兴为您服务，期待下次为您提供帮助"
-            ]
-        }
-        
-        # 初始化Tab结构并设置默认数据
-        self.init_tab_structure()
-        self.tab_data["公司话术"]["常用"] = default_data
-        return default_data
+        """加载话术数据（兼容旧版本）"""
+        return self.load_data_from_adapter()
     
     def migrate_old_data(self, old_data):
         """迁移旧数据到新Tab结构"""
@@ -241,29 +225,54 @@ class AssistantOptimized:
     def save_scripts(self):
         """保存话术数据"""
         try:
-            # 保存当前Tab的数据
-            if hasattr(self, 'tab_data'):
+            if hasattr(self, 'tab_data') and self.data_adapter:
+                # 保存当前Tab的数据到tab_data
                 self.tab_data[self.current_primary_tab][self.current_secondary_tab] = self.scripts
-                with open(self.data_file, 'w', encoding='utf-8') as f:
-                    json.dump(self.tab_data, f, ensure_ascii=False, indent=2)
-        except:
-            pass
+                
+                # 只保存到本地，不自动同步云端
+                # 更新数据适配器中的数据
+                self.data_adapter._user_data["user_id"] = self.current_user_id or "default"
+                self.data_adapter._user_data["scripts_data"] = self.tab_data
+                # 保存到本地文件
+                self.data_adapter._save_local_data()
+                
+                # 保存本地配置
+                config = {
+                    'send_mode': self.send_mode,
+                    'always_on_top': self.always_on_top,
+                    'current_primary_tab': self.current_primary_tab,
+                    'current_secondary_tab': self.current_secondary_tab
+                }
+                self.data_adapter.update_config(config)
+        except Exception as e:
+            print(f"保存数据失败: {e}")
     
-    def init_data_source(self):
-        """初始化数据源"""
-        if self.use_api:
-            try:
-                self.api_manager = APIManager(self.api_base_url)
-                # 测试API连接
-                self.api_manager.get_config()
-                print("API连接成功")
-            except Exception as e:
-                print(f"API连接失败，切换到本地文件模式: {e}")
-                self.use_api = False
-                self.api_manager = None
-        
-        if not self.use_api:
-            print("使用本地文件模式")
+    def init_data_adapter(self):
+        """初始化数据适配器"""
+        try:
+            # 初始化API管理器（但不立即连接）
+            self.api_manager = APIManager(self.api_base_url)
+            
+            # 未登录状态下，不传递api_manager，避免请求云端数据
+            self.data_adapter = DataAdapter(
+                api_manager=None,  # 未登录时不使用API
+                data_file=self.data_file,
+                user_id="default"
+            )
+            
+            # 从数据适配器加载数据
+            self.load_data_from_adapter()
+            
+            print("数据适配器初始化成功（本地模式）")
+        except Exception as e:
+            print(f"数据适配器初始化失败: {e}")
+            # 如果初始化失败，使用本地文件模式
+            self.data_adapter = DataAdapter(
+                api_manager=None,
+                data_file=self.data_file,
+                user_id="default"
+            )
+            self.load_data_from_adapter()
     
     def load_config(self):
         """加载配置"""
@@ -273,8 +282,9 @@ class AssistantOptimized:
                     config = json.load(f)
                     self.send_mode = config.get('send_mode', '直接发送')
                     self.always_on_top = config.get('always_on_top', True)
-                    self.use_api = config.get('use_api', False)
                     self.api_base_url = config.get('api_base_url', 'http://localhost:8000/api')
+                    self.current_user_id = config.get('current_user_id', None)
+                    self.is_logged_in = config.get('is_logged_in', False)
             except:
                 pass
     
@@ -284,8 +294,9 @@ class AssistantOptimized:
             config = {
                 'send_mode': self.send_mode,
                 'always_on_top': self.always_on_top,
-                'use_api': self.use_api,
-                'api_base_url': self.api_base_url
+                'api_base_url': self.api_base_url,
+                'current_user_id': self.current_user_id,
+                'is_logged_in': self.is_logged_in
             }
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(config, f, ensure_ascii=False, indent=2)
@@ -431,7 +442,7 @@ class AssistantOptimized:
         self.primary_notebook.bind("<Button-5>", self.on_primary_tab_scroll)
         
         # 二级Tab - 使用按钮组实现换行显示
-        secondary_tab_frame = ttk.LabelFrame(main_frame, text="二级分类", padding="5")
+        secondary_tab_frame = ttk.LabelFrame(main_frame, text="类别", padding="5")
         secondary_tab_frame.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(5, 0))
         secondary_tab_frame.columnconfigure(0, weight=1)
         
@@ -514,10 +525,21 @@ class AssistantOptimized:
         ttk.Label(status_frame, textvariable=self.status_var, 
                  relief=tk.SUNKEN).grid(row=0, column=0, sticky="ew", padx=(0, 5))
         
-        # 设置按钮（右下角）
-        settings_btn = ttk.Button(status_frame, text="⚙️", width=4)
-        settings_btn.grid(row=0, column=1, sticky="e")
+        # 登录状态和设置按钮
+        button_group = ttk.Frame(status_frame)
+        button_group.grid(row=0, column=1, sticky="e")
+        
+        # 登录按钮
+        self.login_btn = ttk.Button(button_group, text="登录", width=6, command=self.show_login_dialog)
+        self.login_btn.pack(side=tk.LEFT, padx=(0, 5))
+        
+        # 设置按钮
+        settings_btn = ttk.Button(button_group, text="⚙️", width=4)
+        settings_btn.pack(side=tk.LEFT)
         settings_btn.bind('<Button-1>', self.show_context_menu)
+        
+        # 更新登录状态显示
+        self.update_login_status()
         
         # 存储原始数据用于搜索
         self.filtered_scripts = self.scripts.copy()
@@ -532,6 +554,20 @@ class AssistantOptimized:
         
         self.update_secondary_tabs()
         self.update_tree()
+    
+    def show_script_management_menu(self, event):
+        """显示话术管理菜单"""
+        # 创建话术管理菜单
+        management_menu = tk.Menu(self.root, tearoff=0)
+        
+        # 只添加话术标题功能
+        management_menu.add_command(label="添加话术标题", command=self.add_category)
+        
+        # 显示菜单
+        try:
+            management_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            management_menu.grab_release()
     
     def show_script_menu(self, event):
         """显示话术右键菜单"""
@@ -979,6 +1015,18 @@ class AssistantOptimized:
         # 将子菜单添加到主菜单
         context_menu.add_cascade(label="发送模式", menu=send_mode_menu)
         
+        context_menu.add_separator()
+        
+        # 添加数据管理选项
+        context_menu.add_command(label="导入数据", command=self.import_data)
+        context_menu.add_command(label="导出数据", command=self.export_data)
+        
+        # 添加云端数据管理选项
+        if self.is_logged_in:
+            context_menu.add_separator()
+            context_menu.add_command(label="上传数据", command=self.upload_data_to_cloud)
+            context_menu.add_command(label="拉取数据", command=self.download_data_from_cloud)
+        
         # 显示菜单
         try:
             context_menu.tk_popup(event.x_root, event.y_root)
@@ -1290,27 +1338,7 @@ class AssistantOptimized:
         except:
             pass
     
-    def show_secondary_tab_menu(self, event):
-        """显示二级Tab右键菜单"""
-        try:
-            # 获取点击的Tab
-            clicked_tab = self.secondary_notebook.identify("tab", event.x, event.y)
-            if clicked_tab == "":
-                return
-            
-            tab_text = self.secondary_notebook.tab(clicked_tab, "text")
-            
-            # 创建右键菜单
-            context_menu = tk.Menu(self.root, tearoff=0)
-            context_menu.add_command(label="修改名称", 
-                                   command=lambda: self.rename_secondary_tab(clicked_tab, tab_text))
-            context_menu.add_command(label="删除分类", 
-                                   command=lambda: self.delete_secondary_tab(clicked_tab, tab_text))
-            
-            # 显示菜单
-            context_menu.tk_popup(event.x_root, event.y_root)
-        except:
-            pass
+
     
     def rename_primary_tab(self, tab_index, old_name):
         """重命名一级Tab"""
@@ -1336,26 +1364,7 @@ class AssistantOptimized:
             else:
                 messagebox.showwarning("警告", "分类名称已存在！")
     
-    def rename_secondary_tab(self, tab_index, old_name):
-        """重命名二级Tab"""
-        new_name = ask_string(self.root, "修改名称", "请输入新的分类名称:", old_name)
-        if new_name and new_name.strip() and new_name != old_name:
-            new_name = new_name.strip()
-            if new_name not in self.tab_data[self.current_primary_tab]:
-                # 更新数据结构
-                self.tab_data[self.current_primary_tab][new_name] = self.tab_data[self.current_primary_tab].pop(old_name)
-                
-                # 更新界面
-                self.secondary_notebook.tab(tab_index, text=new_name)
-                
-                # 更新当前Tab名称
-                if self.current_secondary_tab == old_name:
-                    self.current_secondary_tab = new_name
-                
-                self.save_scripts()
-                self.status_var.set(f"✅ 已重命名: {old_name} → {new_name}")
-            else:
-                messagebox.showwarning("警告", "分类名称已存在！")
+
     
     def delete_primary_tab(self, tab_index, tab_name):
         """删除一级Tab"""
@@ -1389,33 +1398,308 @@ class AssistantOptimized:
                 messagebox.showerror("错误", f"删除失败: {str(e)}")
                 self.status_var.set(f"❌ 删除失败: {str(e)}")
     
-    def delete_secondary_tab(self, tab_index, tab_name):
-        """删除二级Tab"""
-        if len(self.tab_data[self.current_primary_tab]) <= 1:
-            messagebox.showwarning("警告", "至少需要保留一个二级分类！")
+
+    
+    def show_login_dialog(self):
+        """显示登录对话框"""
+        if self.is_logged_in:
+            # 如果已登录，显示登出选项
+            if messagebox.askyesno("登出确认", f"当前用户: {self.current_user_id}\
+确定要登出吗？"):
+                self.logout_user()
             return
         
-        if messagebox.askyesno("确认删除", f"确定要删除二级分类 '{tab_name}' 及其所有话术吗？", 
-                              icon='question', default='no'):
+        # 创建登录对话框
+        login_dialog = tk.Toplevel(self.root)
+        login_dialog.title("用户登录")
+        login_dialog.geometry("350x220")
+        login_dialog.resizable(False, False)
+        login_dialog.transient(self.root)
+        login_dialog.grab_set()
+        
+        # 居中显示
+        login_dialog.geometry("+%d+%d" % (
+            self.root.winfo_rootx() + 50,
+            self.root.winfo_rooty() + 50
+        ))
+        
+        # 创建界面 - 使用网格布局
+        main_frame = ttk.Frame(login_dialog, padding="25")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        main_frame.columnconfigure(1, weight=1)
+        
+        # 用户名
+        ttk.Label(main_frame, text="用户名:", font=("微软雅黑", 10)).grid(row=0, column=0, sticky="w", pady=(0, 8))
+        username_var = tk.StringVar()
+        username_entry = ttk.Entry(main_frame, textvariable=username_var, font=("微软雅黑", 10), width=25)
+        username_entry.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 15))
+        username_entry.focus()
+        
+        # 密码
+        ttk.Label(main_frame, text="密码:", font=("微软雅黑", 10)).grid(row=2, column=0, sticky="w", pady=(0, 8))
+        password_var = tk.StringVar()
+        password_entry = ttk.Entry(main_frame, textvariable=password_var, show="*", font=("微软雅黑", 10), width=25)
+        password_entry.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(0, 25))
+        
+        # 按钮框架
+        button_frame = ttk.Frame(main_frame)
+        button_frame.grid(row=4, column=0, columnspan=2, sticky="ew")
+        button_frame.columnconfigure(0, weight=1)
+        button_frame.columnconfigure(1, weight=1)
+        
+        def do_login():
+            username = username_var.get().strip()
+            password = password_var.get().strip()
+            
+            if not username or not password:
+                messagebox.showwarning("警告", "请输入用户名和密码！")
+                return
+            
             try:
-                # 从数据结构中删除
-                if tab_name in self.tab_data[self.current_primary_tab]:
-                    del self.tab_data[self.current_primary_tab][tab_name]
+                # 检查API管理器是否可用
+                if not self.api_manager:
+                    messagebox.showerror("登录失败", "API服务不可用")
+                    return
                 
-                # 从界面中删除
-                self.secondary_notebook.forget(tab_index)
-                
-                # 切换到第一个二级Tab
-                if self.tab_data[self.current_primary_tab]:
-                    first_secondary = list(self.tab_data[self.current_primary_tab].keys())[0]
-                    self.current_secondary_tab = first_secondary
-                    self.load_current_tab_data()
-                
-                self.save_scripts()
-                self.status_var.set(f"✅ 已删除二级分类: {tab_name}")
+                # 调用API登录
+                result = self.api_manager.login(username, password)
+                if result.get('success'):
+                    self.current_user_id = result.get('user_id') or username
+                    self.is_logged_in = True
+                    
+                    # 同步云端数据
+                    self.sync_cloud_data()
+                    
+                    # 保存配置
+                    self.save_config()
+                    
+                    # 更新界面
+                    self.update_login_status()
+                    
+                    login_dialog.destroy()
+                    messagebox.showinfo("登录成功", f"欢迎回来，{username}！")
+                else:
+                    messagebox.showerror("登录失败", result.get('message', '用户名或密码错误'))
             except Exception as e:
-                messagebox.showerror("错误", f"删除失败: {str(e)}")
-                self.status_var.set(f"❌ 删除失败: {str(e)}")
+                messagebox.showerror("登录失败", f"登录时发生错误: {str(e)}")
+        
+        def do_cancel():
+            login_dialog.destroy()
+        
+        # 使用网格布局放置按钮，确保完整显示
+        cancel_btn = ttk.Button(button_frame, text="取消", command=do_cancel, width=10)
+        cancel_btn.grid(row=0, column=0, padx=(0, 10), sticky="e")
+        
+        login_btn = ttk.Button(button_frame, text="登录", command=do_login, width=10)
+        login_btn.grid(row=0, column=1, sticky="e")
+        
+        # 绑定回车键
+        login_dialog.bind('<Return>', lambda e: do_login())
+        login_dialog.bind('<Escape>', lambda e: do_cancel())
+    
+    def logout_user(self):
+        """用户登出"""
+        try:
+            if self.api_manager:
+                self.api_manager.logout()
+            
+            self.current_user_id = None
+            self.is_logged_in = False
+            
+            # 重新初始化数据适配器为默认用户
+            self.data_adapter = DataAdapter(
+                api_manager=self.api_manager,
+                data_file=self.data_file,
+                user_id="default"
+            )
+            
+            # 重新加载数据
+            self.load_data_from_adapter()
+            
+            # 更新界面
+            self.update_secondary_tabs()
+            self.update_tree()
+            self.update_login_status()
+            
+            # 保存配置
+            self.save_config()
+            
+            self.status_var.set("已登出")
+        except Exception as e:
+            messagebox.showerror("登出失败", f"登出时发生错误: {str(e)}")
+    
+    def update_login_status(self):
+        """更新登录状态显示"""
+        if self.is_logged_in and self.current_user_id:
+            self.login_btn.configure(text=f"用户:{self.current_user_id[:6]}...")
+        else:
+            self.login_btn.configure(text="登录")
+    
+    def upload_data_to_cloud(self):
+        """手动上传数据到云端"""
+        try:
+            if not self.is_logged_in or not self.current_user_id:
+                messagebox.showwarning("警告", "请先登录后再上传数据！")
+                return
+            
+            if not self.api_manager:
+                messagebox.showerror("错误", "API服务不可用")
+                return
+            
+            # 确认上传
+            confirm_msg = "确定要将本地数据上传到云端吗？\
+这将覆盖云端的现有数据。"
+            if not messagebox.askyesno("确认上传", confirm_msg):
+                return
+            
+            # 启用API功能
+            self.data_adapter.api_manager = self.api_manager
+            self.data_adapter.user_id = self.current_user_id
+            
+            # 准备上传数据
+            full_data = {
+                "user_id": self.current_user_id,
+                "scripts_data": self.tab_data
+            }
+            
+            # 上传到云端
+            success = self.data_adapter.save_full_data(full_data)
+            if success:
+                messagebox.showinfo("上传成功", "数据已成功上传到云端！")
+                self.status_var.set("数据上传成功")
+            else:
+                messagebox.showerror("上传失败", "数据上传失败，请稍后重试")
+                self.status_var.set("数据上传失败")
+                
+        except Exception as e:
+            messagebox.showerror("上传失败", f"上传时发生错误: {str(e)}")
+            self.status_var.set(f"上传失败: {str(e)}")
+    
+    def download_data_from_cloud(self):
+        """手动从云端下载数据"""
+        try:
+            if not self.is_logged_in or not self.current_user_id:
+                messagebox.showwarning("警告", "请先登录后再下载数据！")
+                return
+            
+            if not self.api_manager:
+                messagebox.showerror("错误", "API服务不可用")
+                return
+            
+            # 确认下载
+            if not messagebox.askyesno("确认下载", "确定要从云端下载数据吗？\
+这将覆盖本地的现有数据。"):
+                return
+            
+            # 启用API功能
+            self.data_adapter.api_manager = self.api_manager
+            self.data_adapter.user_id = self.current_user_id
+            
+            # 从云端下载数据
+            success = self.data_adapter.refresh_from_cloud()
+            if success:
+                # 重新加载数据到界面
+                self.load_data_from_adapter()
+                self.update_secondary_tabs()
+                self.update_tree()
+                messagebox.showinfo("下载成功", "数据已成功从云端下载！")
+                self.status_var.set("数据下载成功")
+            else:
+                messagebox.showwarning("下载失败", "云端暂无数据或下载失败")
+                self.status_var.set("云端暂无数据")
+                
+        except Exception as e:
+            messagebox.showerror("下载失败", f"下载时发生错误: {str(e)}")
+            self.status_var.set(f"下载失败: {str(e)}")
+    
+    def sync_cloud_data(self):
+        """同步云端数据（登录时自动调用）"""
+        try:
+            if not self.is_logged_in or not self.current_user_id:
+                print("用户未登录，无法同步云端数据")
+                return False
+            
+            if self.data_adapter:
+                # 登录后启用API功能
+                self.data_adapter.api_manager = self.api_manager
+                self.data_adapter.user_id = self.current_user_id
+                
+                # 刷新云端数据
+                success = self.data_adapter.refresh_from_cloud()
+                if success:
+                    # 重新加载数据到界面
+                    self.load_data_from_adapter()
+                    self.update_secondary_tabs()
+                    self.update_tree()
+                    self.status_var.set("云端数据同步成功")
+                    return True
+                else:
+                    self.status_var.set("使用默认数据")
+                    return False
+        except Exception as e:
+            print(f"同步云端数据失败: {e}")
+            self.status_var.set("数据同步失败，使用本地数据")
+            return False
+    
+    def import_data(self):
+        """导入数据"""
+        from tkinter import filedialog
+        
+        file_path = filedialog.askopenfilename(
+            title="选择要导入的文件",
+            filetypes=[
+                ("Excel文件", "*.xlsx *.xls"),
+                ("CSV文件", "*.csv"),
+                ("JSON文件", "*.json"),
+                ("所有文件", "*.*")
+            ]
+        )
+        
+        if file_path and self.data_adapter:
+            try:
+                success = self.data_adapter.import_data_from_file(file_path)
+                if success:
+                    # 重新加载数据
+                    self.load_data_from_adapter()
+                    self.update_secondary_tabs()
+                    self.update_tree()
+                    messagebox.showinfo("导入成功", "数据导入成功！")
+                else:
+                    messagebox.showerror("导入失败", "数据导入失败，请检查文件格式！")
+            except Exception as e:
+                messagebox.showerror("导入失败", f"导入时发生错误: {str(e)}")
+    
+    def export_data(self):
+        """导出数据"""
+        from tkinter import filedialog
+        
+        file_path = filedialog.asksaveasfilename(
+            title="选择导出位置",
+            defaultextension=".xlsx",
+            filetypes=[
+                ("Excel文件", "*.xlsx"),
+                ("CSV文件", "*.csv"),
+                ("JSON文件", "*.json")
+            ]
+        )
+        
+        if file_path and self.data_adapter:
+            try:
+                # 根据文件扩展名确定格式
+                if file_path.endswith('.xlsx') or file_path.endswith('.xls'):
+                    file_format = "excel"
+                elif file_path.endswith('.csv'):
+                    file_format = "csv"
+                else:
+                    file_format = "json"
+                
+                success = self.data_adapter.export_data_to_file(file_path, file_format)
+                if success:
+                    messagebox.showinfo("导出成功", f"数据已导出到: {file_path}")
+                else:
+                    messagebox.showerror("导出失败", "数据导出失败！")
+            except Exception as e:
+                messagebox.showerror("导出失败", f"导出时发生错误: {str(e)}")
     
     def on_closing(self):
         """关闭程序"""

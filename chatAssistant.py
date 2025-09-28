@@ -342,6 +342,15 @@ class AssistantOptimized:
         self.primary_notebook = ttk.Notebook(primary_tab_frame)
         self.primary_notebook.grid(row=0, column=0, sticky="ew")
         
+        # 配置Notebook样式以支持滚动
+        style = ttk.Style()
+        style.configure('TNotebook', tabposition='n')
+        style.configure('TNotebook.Tab', padding=[6, 3])
+        
+        # 配置二级Tab按钮样式
+        style.configure('Selected.TButton', relief='sunken', background='lightblue', focuscolor='none')
+        style.configure('TButton', focuscolor='none')
+        
         # 一级Tab添加按钮
         primary_add_btn = ttk.Button(primary_tab_frame, text="+", width=3, 
                                    command=self.add_primary_tab)
@@ -357,23 +366,27 @@ class AssistantOptimized:
         # 绑定一级Tab事件
         self.primary_notebook.bind("<<NotebookTabChanged>>", self.on_primary_tab_changed)
         self.primary_notebook.bind("<Button-3>", self.show_primary_tab_menu)
+        # 绑定鼠标滚轮事件实现Tab滚动
+        self.primary_notebook.bind("<MouseWheel>", self.on_primary_tab_scroll)
+        self.primary_notebook.bind("<Button-4>", self.on_primary_tab_scroll)
+        self.primary_notebook.bind("<Button-5>", self.on_primary_tab_scroll)
         
-        # 二级Tab
-        secondary_tab_frame = ttk.Frame(main_frame)
+        # 二级Tab - 使用按钮组实现换行显示
+        secondary_tab_frame = ttk.LabelFrame(main_frame, text="二级分类", padding="5")
         secondary_tab_frame.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(5, 0))
         secondary_tab_frame.columnconfigure(0, weight=1)
         
-        self.secondary_notebook = ttk.Notebook(secondary_tab_frame)
-        self.secondary_notebook.grid(row=0, column=0, sticky="ew")
+        # 直接创建按钮容器，支持换行
+        self.secondary_buttons_frame = ttk.Frame(secondary_tab_frame)
+        self.secondary_buttons_frame.grid(row=0, column=0, sticky="ew", padx=(0, 5))
+        
+        # 存储二级Tab按钮
+        self.secondary_tab_buttons = {}
         
         # 二级Tab添加按钮
         secondary_add_btn = ttk.Button(secondary_tab_frame, text="+", width=3, 
                                      command=self.add_secondary_tab)
-        secondary_add_btn.grid(row=0, column=1, padx=(5, 0))
-        
-        # 绑定二级Tab事件
-        self.secondary_notebook.bind("<<NotebookTabChanged>>", self.on_secondary_tab_changed)
-        self.secondary_notebook.bind("<Button-3>", self.show_secondary_tab_menu)
+        secondary_add_btn.grid(row=0, column=1, padx=(5, 0), sticky="n")
         
         # 操作按钮（移到二级Tab下方）
         button_frame = ttk.Frame(main_frame)
@@ -430,7 +443,7 @@ class AssistantOptimized:
         
         # 发送设置变量
         self.mode_var = tk.StringVar(value=self.send_mode)
-        self.delay_var = tk.StringVar(value="0.8")
+        self.delay_var = tk.StringVar(value="0")
         self.auto_send_var = tk.BooleanVar(value=False)
         
         # 状态栏和设置按钮
@@ -484,6 +497,54 @@ class AssistantOptimized:
         finally:
             context_menu.grab_release()
     
+    def rename_secondary_tab_by_name(self, old_name):
+        """通过名称重命名二级Tab"""
+        new_name = ask_string(self.root, "修改名称", "请输入新的分类名称:", old_name)
+        if new_name and new_name.strip() and new_name != old_name:
+            new_name = new_name.strip()
+            if new_name not in self.tab_data[self.current_primary_tab]:
+                # 更新数据结构
+                self.tab_data[self.current_primary_tab][new_name] = self.tab_data[self.current_primary_tab].pop(old_name)
+                
+                # 更新当前Tab名称
+                if self.current_secondary_tab == old_name:
+                    self.current_secondary_tab = new_name
+                
+                # 更新界面
+                self.update_secondary_tabs()
+                self.save_scripts()
+                self.status_var.set(f"✅ 已重命名: {old_name} → {new_name}")
+            else:
+                messagebox.showwarning("警告", "分类名称已存在！")
+    
+    def delete_secondary_tab_by_name(self, tab_name):
+        """通过名称删除二级Tab"""
+        if len(self.tab_data[self.current_primary_tab]) <= 1:
+            messagebox.showwarning("警告", "至少需要保留一个二级分类！")
+            return
+        
+        if messagebox.askyesno("确认删除", f"确定要删除二级分类 '{tab_name}' 及其所有话术吗？", 
+                              icon='question', default='no'):
+            try:
+                # 从数据结构中删除
+                if tab_name in self.tab_data[self.current_primary_tab]:
+                    del self.tab_data[self.current_primary_tab][tab_name]
+                
+                # 如果删除的是当前Tab，切换到第一个Tab
+                if self.current_secondary_tab == tab_name:
+                    if self.tab_data[self.current_primary_tab]:
+                        first_secondary = list(self.tab_data[self.current_primary_tab].keys())[0]
+                        self.current_secondary_tab = first_secondary
+                        self.load_current_tab_data()
+                
+                # 更新界面
+                self.update_secondary_tabs()
+                self.save_scripts()
+                self.status_var.set(f"✅ 已删除二级分类: {tab_name}")
+            except Exception as e:
+                messagebox.showerror("错误", f"删除失败: {str(e)}")
+                self.status_var.set(f"❌ 删除失败: {str(e)}")
+    
     def update_tree(self):
         """更新树形列表"""
         # 清空树形控件
@@ -492,11 +553,11 @@ class AssistantOptimized:
         
         # 添加分类和话术
         for category, scripts in self.filtered_scripts.items():
-            if scripts:  # 只显示有话术的分类
-                # 添加分类节点
-                category_id = self.tree.insert("", "end", text=f"📁 {category}", open=True)
-                
-                # 添加话术节点
+            # 显示所有分类，包括空分类
+            category_id = self.tree.insert("", "end", text=f"📁 {category}", open=True)
+            
+            # 添加话术节点
+            if scripts:  # 如果有话术才添加话术节点
                 for script in scripts:
                     # 限制显示长度
                     display_text = script if len(script) <= 50 else script[:50] + "..."
@@ -559,8 +620,13 @@ class AssistantOptimized:
         if category and category.strip():
             category = category.strip()
             if category not in self.scripts:
+                # 只添加到当前scripts，保存时会同步到tab_data
                 self.scripts[category] = []
+                # 保存数据
                 self.save_scripts()
+                # 更新过滤数据
+                self.filtered_scripts = self.scripts.copy()
+                # 更新界面
                 self.update_tree()
                 self.status_var.set(f"✅ 已添加分类: {category}")
             else:
@@ -598,8 +664,13 @@ class AssistantOptimized:
         
         script = ask_string(self.root, "添加话术", f"请输入话术内容（分类: {category}）:", "", True)
         if script and script.strip():
+            # 只添加到当前scripts，保存时会同步到tab_data
             self.scripts[category].append(script.strip())
+            # 保存数据
             self.save_scripts()
+            # 更新过滤数据
+            self.filtered_scripts = self.scripts.copy()
+            # 更新界面
             self.update_tree()
             self.status_var.set(f"✅ 已添加话术到 {category}")
     
@@ -626,8 +697,13 @@ class AssistantOptimized:
                 # 找到话术在列表中的索引
                 try:
                     index = self.scripts[category].index(old_script)
+                    # 只更新当前scripts，保存时会同步到tab_data
                     self.scripts[category][index] = new_script.strip()
+                    # 保存数据
                     self.save_scripts()
+                    # 更新过滤数据
+                    self.filtered_scripts = self.scripts.copy()
+                    # 更新界面
                     self.update_tree()
                     self.status_var.set("✅ 话术已更新")
                 except ValueError:
@@ -640,9 +716,13 @@ class AssistantOptimized:
             if new_category and new_category.strip() and new_category != old_category:
                 new_category = new_category.strip()
                 if new_category not in self.scripts:
-                    # 重命名分类
+                    # 只重命名当前scripts，保存时会同步到tab_data
                     self.scripts[new_category] = self.scripts.pop(old_category)
+                    # 保存数据
                     self.save_scripts()
+                    # 更新过滤数据
+                    self.filtered_scripts = self.scripts.copy()
+                    # 更新界面
                     self.update_tree()
                     self.status_var.set(f"✅ 分类已重命名: {old_category} → {new_category}")
                 else:
@@ -670,8 +750,13 @@ class AssistantOptimized:
                 
                 # 从列表中删除
                 try:
+                    # 只从当前scripts删除，保存时会同步到tab_data
                     self.scripts[category].remove(script)
+                    # 保存数据
                     self.save_scripts()
+                    # 更新过滤数据
+                    self.filtered_scripts = self.scripts.copy()
+                    # 更新界面
                     self.update_tree()
                     self.status_var.set("✅ 话术已删除")
                 except ValueError:
@@ -682,8 +767,13 @@ class AssistantOptimized:
             category = item_text.replace("📁 ", "")
             if messagebox.askyesno("确认删除", f"确定要删除分类 '{category}' 及其所有话术吗？", 
                               icon='question', default='no'):
+                # 只从当前scripts删除，保存时会同步到tab_data
                 del self.scripts[category]
+                # 保存数据
                 self.save_scripts()
+                # 更新过滤数据
+                self.filtered_scripts = self.scripts.copy()
+                # 更新界面
                 self.update_tree()
                 self.status_var.set(f"✅ 已删除分类: {category}")
     
@@ -882,36 +972,82 @@ class AssistantOptimized:
         except:
             pass
     
-    def on_secondary_tab_changed(self, event):
-        """二级Tab切换事件"""
-        try:
-            # 获取当前选中的二级Tab索引
-            current_index = self.secondary_notebook.index('current')
-            secondary_tabs = list(self.tab_data[self.current_primary_tab].keys())
-            
-            if current_index < len(secondary_tabs):
-                selected_tab = secondary_tabs[current_index]
-                if selected_tab != self.current_secondary_tab:
-                    # 保存当前数据
-                    self.save_scripts()
-                    
-                    # 切换到新Tab
-                    self.current_secondary_tab = selected_tab
-                    self.load_current_tab_data()
-        except:
-            pass
+
     
     def update_secondary_tabs(self):
-        """更新二级Tab"""
-        # 清空现有的二级Tab
-        for tab in self.secondary_notebook.tabs():
-            self.secondary_notebook.forget(tab)
+        """更新二级Tab按钮"""
+        # 清空现有的二级Tab按钮
+        for widget in self.secondary_buttons_frame.winfo_children():
+            widget.destroy()
+        self.secondary_tab_buttons.clear()
         
-        # 添加当前一级Tab对应的二级Tab
+        # 添加当前一级Tab对应的二级Tab按钮
         if self.current_primary_tab in self.tab_data:
+            row = 0
+            col = 0
+            max_cols = 5  # 每行最多5个按钮，避免过于拥挤
+            
             for tab_name in self.tab_data[self.current_primary_tab].keys():
-                tab_frame = ttk.Frame(self.secondary_notebook)
-                self.secondary_notebook.add(tab_frame, text=tab_name)
+                # 创建按钮样式
+                is_current = (tab_name == self.current_secondary_tab)
+                
+                btn = ttk.Button(
+                    self.secondary_buttons_frame,
+                    text=tab_name,
+                    command=lambda name=tab_name: self.select_secondary_tab(name),
+                    style='Selected.TButton' if is_current else 'TButton',
+                    takefocus=False  # 防止按钮获得焦点
+                )
+                
+                btn.grid(row=row, column=col, padx=3, pady=3, sticky="ew")
+                btn.bind("<Button-3>", lambda e, name=tab_name: self.show_secondary_tab_context_menu(e, name))
+                
+                self.secondary_tab_buttons[tab_name] = btn
+                
+                col += 1
+                if col >= max_cols:
+                    col = 0
+                    row += 1
+            
+            # 配置列权重以实现均匀分布
+            current_row_cols = col if col > 0 else max_cols
+            for i in range(max_cols):
+                self.secondary_buttons_frame.columnconfigure(i, weight=1)
+    
+    def select_secondary_tab(self, tab_name):
+        """选择二级Tab"""
+        if tab_name != self.current_secondary_tab:
+            # 保存当前数据
+            self.save_scripts()
+            
+            # 切换到新Tab
+            self.current_secondary_tab = tab_name
+            self.load_current_tab_data()
+            
+            # 更新按钮样式
+            self.update_secondary_tab_styles()
+    
+    def update_secondary_tab_styles(self):
+        """更新二级Tab按钮样式"""
+        for tab_name, btn in self.secondary_tab_buttons.items():
+            if tab_name == self.current_secondary_tab:
+                btn.configure(style='Selected.TButton')
+            else:
+                btn.configure(style='TButton')
+    
+    def show_secondary_tab_context_menu(self, event, tab_name):
+        """显示二级Tab右键菜单"""
+        context_menu = tk.Menu(self.root, tearoff=0)
+        context_menu.add_command(label="修改名称", 
+                               command=lambda: self.rename_secondary_tab_by_name(tab_name))
+        context_menu.add_command(label="删除分类", 
+                               command=lambda: self.delete_secondary_tab_by_name(tab_name))
+        
+        # 显示菜单
+        try:
+            context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            context_menu.grab_release()
     
     def load_current_tab_data(self):
         """加载当前Tab的数据"""
@@ -925,12 +1061,38 @@ class AssistantOptimized:
             self.search_entry.insert(0, self.search_placeholder)
             self.search_entry.config(foreground='gray')
     
+    def on_primary_tab_scroll(self, event):
+        """处理一级Tab的滚轮滚动事件"""
+        try:
+            # 获取当前选中的Tab索引
+            current_index = self.primary_notebook.index('current')
+            total_tabs = len(self.primary_notebook.tabs())
+            
+            if total_tabs <= 1:
+                return
+            
+            # 根据滚动方向切换Tab
+            if event.delta > 0 or event.num == 4:  # 向上滚动
+                new_index = (current_index - 1) % total_tabs
+            else:  # 向下滚动
+                new_index = (current_index + 1) % total_tabs
+            
+            # 切换到新Tab
+            self.primary_notebook.select(new_index)
+        except:
+            pass
+    
+
+    
     def add_primary_tab(self):
         """添加一级Tab"""
         tab_name = ask_string(self.root, "新增一级分类", "请输入分类名称:")
         if tab_name and tab_name.strip():
             tab_name = tab_name.strip()
             if tab_name not in self.tab_data:
+                # 保存当前Tab数据
+                self.save_scripts()
+                
                 # 添加到数据结构
                 self.tab_data[tab_name] = {"默认": {}}
                 
@@ -940,10 +1102,13 @@ class AssistantOptimized:
                 self.primary_notebook.add(tab_frame, text=tab_name)
                 
                 # 切换到新Tab
-                self.primary_notebook.select(tab_frame)
                 self.current_primary_tab = tab_name
                 self.current_secondary_tab = "默认"
                 
+                # 选择新添加的Tab
+                self.primary_notebook.select(tab_frame)
+                
+                # 更新界面
                 self.update_secondary_tabs()
                 self.load_current_tab_data()
                 self.save_scripts()
@@ -960,15 +1125,11 @@ class AssistantOptimized:
                 # 添加到数据结构
                 self.tab_data[self.current_primary_tab][tab_name] = {}
                 
-                # 重新更新二级Tab
-                self.update_secondary_tabs()
-                
                 # 切换到新Tab
-                secondary_tabs = list(self.tab_data[self.current_primary_tab].keys())
-                new_index = secondary_tabs.index(tab_name)
-                self.secondary_notebook.select(new_index)
                 self.current_secondary_tab = tab_name
                 
+                # 重新更新二级Tab按钮
+                self.update_secondary_tabs()
                 self.load_current_tab_data()
                 self.save_scripts()
                 self.status_var.set(f"✅ 已添加二级分类: {tab_name}")
@@ -979,7 +1140,7 @@ class AssistantOptimized:
         """显示一级Tab右键菜单"""
         try:
             # 获取点击的Tab
-            clicked_tab = self.primary_notebook.tk.call(self.primary_notebook._w, "identify", "tab", event.x, event.y)
+            clicked_tab = self.primary_notebook.identify("tab", event.x, event.y)
             if clicked_tab == "":
                 return
             
@@ -1001,7 +1162,7 @@ class AssistantOptimized:
         """显示二级Tab右键菜单"""
         try:
             # 获取点击的Tab
-            clicked_tab = self.secondary_notebook.tk.call(self.secondary_notebook._w, "identify", "tab", event.x, event.y)
+            clicked_tab = self.secondary_notebook.identify("tab", event.x, event.y)
             if clicked_tab == "":
                 return
             

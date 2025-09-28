@@ -8,6 +8,7 @@ import pyperclip
 import win32gui
 import win32con
 from threading import Timer, Thread
+from api_manager import APIManager
 
 class ChineseInputDialog:
     """中文输入对话框"""
@@ -127,8 +128,18 @@ class AssistantOptimized:
         # 发送模式配置
         self.send_mode = "直接发送"  # 默认模式
         self.always_on_top = True  # 默认置顶
+        
+        # 数据源配置 (True: 使用API, False: 使用本地文件)
+        self.use_api = False
+        self.api_base_url = "http://localhost:8000/api"
+        
+        # 初始化API管理器
+        self.api_manager = None
         self.config_file = "config.json"
         self.load_config()
+        
+        # 初始化数据源
+        self.init_data_source()
         
         # 创建界面
         self.create_widgets()
@@ -238,6 +249,22 @@ class AssistantOptimized:
         except:
             pass
     
+    def init_data_source(self):
+        """初始化数据源"""
+        if self.use_api:
+            try:
+                self.api_manager = APIManager(self.api_base_url)
+                # 测试API连接
+                self.api_manager.get_config()
+                print("API连接成功")
+            except Exception as e:
+                print(f"API连接失败，切换到本地文件模式: {e}")
+                self.use_api = False
+                self.api_manager = None
+        
+        if not self.use_api:
+            print("使用本地文件模式")
+    
     def load_config(self):
         """加载配置"""
         if os.path.exists(self.config_file):
@@ -246,6 +273,8 @@ class AssistantOptimized:
                     config = json.load(f)
                     self.send_mode = config.get('send_mode', '直接发送')
                     self.always_on_top = config.get('always_on_top', True)
+                    self.use_api = config.get('use_api', False)
+                    self.api_base_url = config.get('api_base_url', 'http://localhost:8000/api')
             except:
                 pass
     
@@ -254,7 +283,9 @@ class AssistantOptimized:
         try:
             config = {
                 'send_mode': self.send_mode,
-                'always_on_top': self.always_on_top
+                'always_on_top': self.always_on_top,
+                'use_api': self.use_api,
+                'api_base_url': self.api_base_url
             }
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(config, f, ensure_ascii=False, indent=2)
@@ -450,7 +481,7 @@ class AssistantOptimized:
         self.tree.bind('<Button-3>', self.show_script_menu)
         
         # 搜索框
-        search_frame = ttk.LabelFrame(main_frame, text="搜索话术", padding="5")
+        search_frame = ttk.LabelFrame(main_frame, text="搜索", padding="5")
         search_frame.grid(row=5, column=0, columnspan=3, sticky="ew", pady=(10, 0))
         search_frame.columnconfigure(1, weight=1)
         
@@ -1086,7 +1117,7 @@ class AssistantOptimized:
         if self.current_primary_tab in self.tab_data:
             row = 0
             col = 0
-            max_cols = 5  # 每行最多5个按钮，避免过于拥挤
+            max_cols = 4  # 每行最多4个按钮，让Tab显示更多文字
             
             for tab_name in self.tab_data[self.current_primary_tab].keys():
                 # 创建按钮样式

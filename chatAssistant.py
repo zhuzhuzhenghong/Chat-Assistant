@@ -101,19 +101,21 @@ class AssistantOptimized:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("聚雍宝")
-        self.root.geometry("420x700")
+        self.root.geometry("380x700")
         self.root.resizable(True, True)
         
         # 核心数据
         self.data_file = "scripts.json"
-        self.scripts = self.load_scripts()
         
-        # Tab数据结构
+        # Tab数据结构 - 先设置默认值
         self.current_primary_tab = "公司话术"
         self.current_secondary_tab = "常用"
         
         # 初始化Tab数据结构
         self.init_tab_structure()
+        
+        # 加载数据（这会更新tab_data和当前Tab设置）
+        self.scripts = self.load_scripts()
         
         # 目标窗口跟踪
         self.target_window = None
@@ -124,12 +126,14 @@ class AssistantOptimized:
         
         # 发送模式配置
         self.send_mode = "直接发送"  # 默认模式
+        self.always_on_top = True  # 默认置顶
         self.config_file = "config.json"
         self.load_config()
         
         # 创建界面
         self.create_widgets()
-        self.root.attributes('-topmost', True)
+        # 根据配置设置窗口置顶状态
+        self.root.attributes('-topmost', self.always_on_top)
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         
         # 启动监控
@@ -163,16 +167,21 @@ class AssistantOptimized:
                 with open(self.data_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     # 检查是否是新的Tab结构
-                    if isinstance(data, dict) and "公司话术" in data:
+                    if isinstance(data, dict) and any(key in data for key in ["公司话术", "小组话术", "私人话术"]):
                         self.tab_data = data
+                        # 确保当前Tab存在
+                        if self.current_primary_tab not in self.tab_data:
+                            self.current_primary_tab = list(self.tab_data.keys())[0]
+                        if self.current_secondary_tab not in self.tab_data[self.current_primary_tab]:
+                            self.current_secondary_tab = list(self.tab_data[self.current_primary_tab].keys())[0]
                         # 返回当前选中Tab的数据
                         return self.get_current_tab_data()
                     else:
                         # 旧格式数据，迁移到新结构
                         self.migrate_old_data(data)
                         return self.get_current_tab_data()
-            except:
-                pass
+            except Exception as e:
+                print(f"加载数据失败: {e}")
         
         # 默认数据
         default_data = {
@@ -236,6 +245,7 @@ class AssistantOptimized:
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     config = json.load(f)
                     self.send_mode = config.get('send_mode', '直接发送')
+                    self.always_on_top = config.get('always_on_top', True)
             except:
                 pass
     
@@ -243,7 +253,8 @@ class AssistantOptimized:
         """保存配置"""
         try:
             config = {
-                'send_mode': self.send_mode
+                'send_mode': self.send_mode,
+                'always_on_top': self.always_on_top
             }
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(config, f, ensure_ascii=False, indent=2)
@@ -304,8 +315,9 @@ class AssistantOptimized:
             if len(display_title) > 25:
                 display_title = display_title[:25] + "..."
             
-            lock_status = "🔒" if self.is_locked else "🎯"
-            self.target_var.set(f"{lock_status} 目标: {display_title}")
+            lock_status = "锁定" if self.is_locked else ""
+            prefix = f"[{lock_status}] " if lock_status else ""
+            self.target_var.set(f"{prefix}目标: {display_title}")
     
     def create_widgets(self):
         """创建界面"""
@@ -321,7 +333,7 @@ class AssistantOptimized:
         target_frame = ttk.LabelFrame(main_frame, text="当前目标", padding="5")
         target_frame.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 10))
         
-        self.target_var = tk.StringVar(value="🎯 目标: 无")
+        self.target_var = tk.StringVar(value="目标: 无")
         ttk.Label(target_frame, textvariable=self.target_var, 
                  font=("微软雅黑", 10), foreground="blue").pack(side=tk.LEFT)
         
@@ -329,10 +341,19 @@ class AssistantOptimized:
         button_group = ttk.Frame(target_frame)
         button_group.pack(side=tk.RIGHT)
         
-        self.lock_button = ttk.Button(button_group, text="🔒 锁定", command=self.toggle_lock)
-        self.lock_button.pack(side=tk.RIGHT, padx=(0, 5))
+        # 置顶勾选框
+        self.topmost_var = tk.BooleanVar(value=self.always_on_top)
+        topmost_checkbox = ttk.Checkbutton(button_group, text="置顶", 
+                                         variable=self.topmost_var, 
+                                         command=self.on_topmost_changed)
+        topmost_checkbox.pack(side=tk.RIGHT, padx=(0, 10))
         
-        ttk.Button(button_group, text="测试", command=self.test_send).pack(side=tk.RIGHT)
+        # 锁定勾选框
+        self.lock_var = tk.BooleanVar(value=self.is_locked)
+        lock_checkbox = ttk.Checkbutton(button_group, text="锁定", 
+                                      variable=self.lock_var, 
+                                      command=self.on_lock_changed)
+        lock_checkbox.pack(side=tk.RIGHT, padx=(0, 5))
         
         # 一级Tab
         primary_tab_frame = ttk.Frame(main_frame)
@@ -340,7 +361,7 @@ class AssistantOptimized:
         primary_tab_frame.columnconfigure(0, weight=1)
         
         self.primary_notebook = ttk.Notebook(primary_tab_frame)
-        self.primary_notebook.grid(row=0, column=0, sticky="ew")
+        self.primary_notebook.grid(row=0, column=0, sticky="w")  # 改为左对齐
         
         # 配置Notebook样式以支持滚动
         style = ttk.Style()
@@ -351,17 +372,24 @@ class AssistantOptimized:
         style.configure('Selected.TButton', relief='sunken', background='lightblue', focuscolor='none')
         style.configure('TButton', focuscolor='none')
         
-        # 一级Tab添加按钮
+        # 一级Tab添加按钮 - 紧贴在Notebook右侧
         primary_add_btn = ttk.Button(primary_tab_frame, text="+", width=3, 
                                    command=self.add_primary_tab)
-        primary_add_btn.grid(row=0, column=1, padx=(5, 0))
+        primary_add_btn.grid(row=0, column=1, padx=(2, 0), sticky="w")
         
-        # 创建一级Tab页面
+        # 创建一级Tab页面 - 根据实际数据创建
         self.primary_tabs = {}
-        for tab_name in ["公司话术", "小组话术", "私人话术"]:
-            tab_frame = ttk.Frame(self.primary_notebook)
-            self.primary_tabs[tab_name] = tab_frame
-            self.primary_notebook.add(tab_frame, text=tab_name)
+        if hasattr(self, 'tab_data') and self.tab_data:
+            for tab_name in self.tab_data.keys():
+                tab_frame = ttk.Frame(self.primary_notebook)
+                self.primary_tabs[tab_name] = tab_frame
+                self.primary_notebook.add(tab_frame, text=tab_name)
+        else:
+            # 如果没有数据，创建默认Tab
+            for tab_name in ["公司话术", "小组话术", "私人话术"]:
+                tab_frame = ttk.Frame(self.primary_notebook)
+                self.primary_tabs[tab_name] = tab_frame
+                self.primary_notebook.add(tab_frame, text=tab_name)
         
         # 绑定一级Tab事件
         self.primary_notebook.bind("<<NotebookTabChanged>>", self.on_primary_tab_changed)
@@ -390,16 +418,16 @@ class AssistantOptimized:
         
         # 操作按钮（移到二级Tab下方）
         button_frame = ttk.Frame(main_frame)
-        button_frame.grid(row=3, column=0, columnspan=3, pady=(5, 0))
+        button_frame.grid(row=3, column=0, columnspan=3, sticky="w", pady=(5, 0))
+        
+        # 左对齐布局：添加话术标题按钮 -> 双击话术提示
+        ttk.Button(button_frame, text="添加话术标题", command=self.add_category).pack(side=tk.LEFT, padx=(0, 10))
         
         # 动态显示双击话术提示和发送模式
         self.tip_var = tk.StringVar()
         self.update_tip_text()
         ttk.Label(button_frame, textvariable=self.tip_var, 
-                 font=("微软雅黑", 9), foreground="green").pack(side=tk.LEFT, padx=(0, 20))
-        
-        ttk.Button(button_frame, text="添加话术标题", command=self.add_category).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(button_frame, text="添加话术", command=self.add_script).pack(side=tk.LEFT, padx=(0, 5))
+                 font=("微软雅黑", 9), foreground="green").pack(side=tk.LEFT, padx=(0, 10))
         
         # 话术树形列表
         list_frame = ttk.Frame(main_frame)
@@ -426,14 +454,14 @@ class AssistantOptimized:
         search_frame.grid(row=5, column=0, columnspan=3, sticky="ew", pady=(10, 0))
         search_frame.columnconfigure(1, weight=1)
         
-        ttk.Label(search_frame, text="🔍").grid(row=0, column=0, padx=(0, 5))
+        ttk.Label(search_frame, text="搜索").grid(row=0, column=0, padx=(0, 5))
         self.search_var = tk.StringVar()
         self.search_entry = ttk.Entry(search_frame, textvariable=self.search_var)
         self.search_entry.grid(row=0, column=1, sticky="ew", padx=(0, 5))
         self.search_var.trace('w', self.on_search_change)
         
         # 添加占位符效果
-        self.search_placeholder = "输入关键词搜索话术..."
+        self.search_placeholder = "输入关键词搜索所有话术..."
         self.search_entry.insert(0, self.search_placeholder)
         self.search_entry.config(foreground='gray')
         self.search_entry.bind('<FocusIn>', self.on_search_focus_in)
@@ -456,14 +484,21 @@ class AssistantOptimized:
                  relief=tk.SUNKEN).grid(row=0, column=0, sticky="ew", padx=(0, 5))
         
         # 设置按钮（右下角）
-        settings_btn = ttk.Button(status_frame, text="⚙️", width=3)
+        settings_btn = ttk.Button(status_frame, text="⚙️", width=4)
         settings_btn.grid(row=0, column=1, sticky="e")
         settings_btn.bind('<Button-1>', self.show_context_menu)
         
         # 存储原始数据用于搜索
         self.filtered_scripts = self.scripts.copy()
         
-        # 初始化Tab显示
+        # 初始化Tab显示 - 确保选中正确的Tab
+        if hasattr(self, 'tab_data') and self.tab_data:
+            # 选中当前的一级Tab
+            for i, tab_name in enumerate(self.tab_data.keys()):
+                if tab_name == self.current_primary_tab:
+                    self.primary_notebook.select(i)
+                    break
+        
         self.update_secondary_tabs()
         self.update_tree()
     
@@ -488,6 +523,8 @@ class AssistantOptimized:
             context_menu.add_command(label="删除", command=self.delete_item)
         else:
             # 分类节点菜单
+            context_menu.add_command(label="添加话术", command=lambda: self.add_script_to_category(item))
+            context_menu.add_separator()
             context_menu.add_command(label="编辑", command=self.edit_item)
             context_menu.add_command(label="删除", command=self.delete_item)
         
@@ -513,7 +550,7 @@ class AssistantOptimized:
                 # 更新界面
                 self.update_secondary_tabs()
                 self.save_scripts()
-                self.status_var.set(f"✅ 已重命名: {old_name} → {new_name}")
+                self.status_var.set(f"已重命名: {old_name} → {new_name}")
             else:
                 messagebox.showwarning("警告", "分类名称已存在！")
     
@@ -540,10 +577,10 @@ class AssistantOptimized:
                 # 更新界面
                 self.update_secondary_tabs()
                 self.save_scripts()
-                self.status_var.set(f"✅ 已删除二级分类: {tab_name}")
+                self.status_var.set(f"已删除二级分类: {tab_name}")
             except Exception as e:
                 messagebox.showerror("错误", f"删除失败: {str(e)}")
-                self.status_var.set(f"❌ 删除失败: {str(e)}")
+                self.status_var.set(f"删除失败: {str(e)}")
     
     def update_tree(self):
         """更新树形列表"""
@@ -586,7 +623,7 @@ class AssistantOptimized:
         if self.send_mode == "添加到剪贴板":
             # 直接复制到剪贴板
             pyperclip.copy(script)
-            self.status_var.set("✅ 已复制到剪贴板")
+            self.status_var.set("已复制到剪贴板")
             return
         elif self.send_mode == "添加到输入框":
             # 只粘贴到输入框，不发送
@@ -599,7 +636,7 @@ class AssistantOptimized:
             except:
                 delay = 0.8
             
-            self.status_var.set(f"⏳ {delay}秒后添加到输入框...")
+            self.status_var.set(f"{delay}秒后添加到输入框...")
             
             if delay > 0:
                 Timer(delay, lambda: self.paste_to_input(script)).start()
@@ -611,7 +648,7 @@ class AssistantOptimized:
                 return
             
             # 直接发送，不使用延时
-            self.status_var.set("⏳ 正在发送...")
+            self.status_var.set("正在发送...")
             self.send_text_direct(script)
     
     def add_category(self):
@@ -628,7 +665,7 @@ class AssistantOptimized:
                 self.filtered_scripts = self.scripts.copy()
                 # 更新界面
                 self.update_tree()
-                self.status_var.set(f"✅ 已添加分类: {category}")
+                self.status_var.set(f"已添加分类: {category}")
             else:
                 messagebox.showwarning("警告", "分类已存在！")
     
@@ -644,11 +681,11 @@ class AssistantOptimized:
             parent = self.tree.parent(item)
             if parent:
                 category_text = self.tree.item(parent, "text")
-                category = category_text.replace("📁 ", "")
+                category = category_text
             else:
                 # 选中的是分类
                 category_text = self.tree.item(item, "text")
-                category = category_text.replace("📁 ", "")
+                category = category_text
         
         if not category:
             # 如果没有选中，让用户选择分类
@@ -672,6 +709,29 @@ class AssistantOptimized:
             self.filtered_scripts = self.scripts.copy()
             # 更新界面
             self.update_tree()
+            self.status_var.set(f"已添加话术到 {category}")
+    
+    def add_script_to_category(self, item):
+        """向指定分类添加话术"""
+        # 获取分类名称
+        category_text = self.tree.item(item, "text")
+        category = category_text.replace("📁 ", "")
+        
+        # 确保分类存在，如果不存在则创建
+        if category not in self.scripts:
+            self.scripts[category] = []
+        
+        script = ask_string(self.root, "添加话术", f"请输入话术内容（分类: {category}）:", "", True)
+        if script and script.strip():
+            # 添加到当前scripts
+            self.scripts[category].append(script.strip())
+            # 保存数据
+            self.save_scripts()
+            # 更新过滤数据
+            self.filtered_scripts = self.scripts.copy()
+            # 更新界面
+            self.update_tree()
+            self.status_var.set(f"✅ 已添加话术到 {category}")
             self.status_var.set(f"✅ 已添加话术到 {category}")
     
     def edit_item(self):
@@ -705,13 +765,13 @@ class AssistantOptimized:
                     self.filtered_scripts = self.scripts.copy()
                     # 更新界面
                     self.update_tree()
-                    self.status_var.set("✅ 话术已更新")
+                    self.status_var.set("话术已更新")
                 except ValueError:
                     messagebox.showerror("错误", "找不到要编辑的话术！")
         else:
             # 编辑分类
             item_text = self.tree.item(item, "text")
-            old_category = item_text.replace("📁 ", "")
+            old_category = item_text
             new_category = ask_string(self.root, "编辑分类", "请修改分类名称:", old_category)
             if new_category and new_category.strip() and new_category != old_category:
                 new_category = new_category.strip()
@@ -775,14 +835,14 @@ class AssistantOptimized:
                 self.filtered_scripts = self.scripts.copy()
                 # 更新界面
                 self.update_tree()
-                self.status_var.set(f"✅ 已删除分类: {category}")
+                self.status_var.set(f"已删除分类: {category}")
     
     def paste_to_input(self, text):
         """只粘贴到输入框，不发送"""
         try:
             # 检查窗口是否存在
             if self.target_window and not win32gui.IsWindow(self.target_window):
-                self.status_var.set("❌ 目标窗口已关闭")
+                self.status_var.set("目标窗口已关闭")
                 return
             
             # 激活目标窗口
@@ -796,10 +856,10 @@ class AssistantOptimized:
             time.sleep(0.1)
             pyautogui.hotkey('ctrl', 'v')
             
-            self.status_var.set("✅ 已添加到输入框")
+            self.status_var.set("已添加到输入框")
             
         except Exception as e:
-            self.status_var.set(f"❌ 添加失败: {str(e)}")
+            self.status_var.set(f"添加失败: {str(e)}")
     
     def test_send(self):
         """测试发送"""
@@ -842,10 +902,10 @@ class AssistantOptimized:
             time.sleep(0.1)
             pyautogui.press('enter')
             
-            self.status_var.set("✅ 已直接发送")
+            self.status_var.set("已直接发送")
             
         except Exception as e:
-            self.status_var.set(f"❌ 发送失败: {str(e)}")
+            self.status_var.set(f"发送失败: {str(e)}")
     
     def toggle_lock(self):
         """切换锁定状态"""
@@ -854,12 +914,11 @@ class AssistantOptimized:
             return
         
         self.is_locked = not self.is_locked
+        self.lock_var.set(self.is_locked)
         
         if self.is_locked:
-            self.lock_button.config(text="🔓 解锁")
-            self.status_var.set(f"🔒 已锁定目标: {self.target_title}")
+            self.status_var.set(f"已锁定目标: {self.target_title}")
         else:
-            self.lock_button.config(text="🔒 锁定")
             self.status_var.set("🔓 已解锁，恢复自动检测")
         
         self.update_target_display()
@@ -873,9 +932,9 @@ class AssistantOptimized:
         
         # 添加发送模式选项到子菜单
         modes = [
-            ("📋 添加到剪贴板", "添加到剪贴板"),
-            ("📝 添加到输入框", "添加到输入框"), 
-            ("🚀 直接发送", "直接发送")
+            ("添加到剪贴板", "添加到剪贴板"),
+            ("添加到输入框", "添加到输入框"), 
+            ("直接发送", "直接发送")
         ]
         
         for display_text, mode_value in modes:
@@ -887,7 +946,7 @@ class AssistantOptimized:
             )
         
         # 将子菜单添加到主菜单
-        context_menu.add_cascade(label="⚙️ 发送模式", menu=send_mode_menu)
+        context_menu.add_cascade(label="发送模式", menu=send_mode_menu)
         
         # 显示菜单
         try:
@@ -902,7 +961,7 @@ class AssistantOptimized:
             "添加到输入框": "添加到输入框", 
             "直接发送": "直接发送"
         }
-        tip = f"💡 双击话术 → {mode_text.get(self.send_mode, self.send_mode)}"
+        tip = f"双击话术 → {mode_text.get(self.send_mode, self.send_mode)}"
         if hasattr(self, 'tip_var'):
             self.tip_var.set(tip)
     
@@ -912,7 +971,42 @@ class AssistantOptimized:
         self.mode_var.set(mode)
         self.save_config()
         self.update_tip_text()
-        self.status_var.set(f"✅ 发送模式: {mode}")
+        self.status_var.set(f"发送模式: {mode}")
+    
+    def toggle_always_on_top(self):
+        """切换窗口置顶状态"""
+        self.always_on_top = not self.always_on_top
+        self.root.attributes('-topmost', self.always_on_top)
+        self.save_config()
+        
+        status_text = "窗口已置顶" if self.always_on_top else "窗口已取消置顶"
+        self.status_var.set(status_text)
+    
+    def on_topmost_changed(self):
+        """置顶勾选框变化事件"""
+        self.always_on_top = self.topmost_var.get()
+        self.root.attributes('-topmost', self.always_on_top)
+        self.save_config()
+        
+        status_text = "✅ 窗口已置顶" if self.always_on_top else "✅ 窗口已取消置顶"
+        self.status_var.set(status_text)
+    
+    def on_lock_changed(self):
+        """锁定勾选框变化事件"""
+        self.is_locked = self.lock_var.get()
+        
+        if self.is_locked:
+            if not self.target_window:
+                # 如果没有目标窗口，取消锁定
+                self.lock_var.set(False)
+                self.is_locked = False
+                messagebox.showwarning("警告", "没有检测到目标窗口！")
+                return
+            self.status_var.set(f"🔒 已锁定目标: {self.target_title}")
+        else:
+            self.status_var.set("🔓 已解锁，恢复自动检测")
+        
+        self.update_target_display()
     
     def on_search_focus_in(self, event):
         """搜索框获得焦点"""
@@ -932,17 +1026,23 @@ class AssistantOptimized:
         
         # 如果是占位符文本，不进行搜索
         if search_text == self.search_placeholder or not search_text:
-            # 如果搜索框为空，显示所有话术
+            # 如果搜索框为空，显示当前Tab的所有话术
             self.filtered_scripts = self.scripts.copy()
         else:
-            # 过滤包含搜索关键词的话术
+            # 搜索所有Tab中包含关键词的话术
             search_text = search_text.lower()
             self.filtered_scripts = {}
-            for category, scripts in self.scripts.items():
-                filtered_scripts = [script for script in scripts 
-                                  if search_text in script.lower()]
-                if filtered_scripts:
-                    self.filtered_scripts[category] = filtered_scripts
+            
+            # 遍历所有Tab的数据
+            for primary_tab, secondary_tabs in self.tab_data.items():
+                for secondary_tab, categories in secondary_tabs.items():
+                    for category, scripts in categories.items():
+                        filtered_scripts = [script for script in scripts 
+                                          if search_text in script.lower()]
+                        if filtered_scripts:
+                            # 创建带Tab信息的分类名称
+                            display_category = f"[{primary_tab}-{secondary_tab}] {category}"
+                            self.filtered_scripts[display_category] = filtered_scripts
         
         self.update_tree()
     
@@ -951,6 +1051,7 @@ class AssistantOptimized:
         self.search_entry.delete(0, tk.END)
         self.search_entry.insert(0, self.search_placeholder)
         self.search_entry.config(foreground='gray')
+        # 恢复到当前Tab的数据显示
         self.filtered_scripts = self.scripts.copy()
         self.update_tree()
     
@@ -1112,7 +1213,7 @@ class AssistantOptimized:
                 self.update_secondary_tabs()
                 self.load_current_tab_data()
                 self.save_scripts()
-                self.status_var.set(f"✅ 已添加一级分类: {tab_name}")
+                self.status_var.set(f"已添加一级分类: {tab_name}")
             else:
                 messagebox.showwarning("警告", "分类名称已存在！")
     
@@ -1132,7 +1233,7 @@ class AssistantOptimized:
                 self.update_secondary_tabs()
                 self.load_current_tab_data()
                 self.save_scripts()
-                self.status_var.set(f"✅ 已添加二级分类: {tab_name}")
+                self.status_var.set(f"已添加二级分类: {tab_name}")
             else:
                 messagebox.showwarning("警告", "分类名称已存在！")
     
@@ -1252,7 +1353,7 @@ class AssistantOptimized:
                     self.load_current_tab_data()
                 
                 self.save_scripts()
-                self.status_var.set(f"✅ 已删除一级分类: {tab_name}")
+                self.status_var.set(f"已删除一级分类: {tab_name}")
             except Exception as e:
                 messagebox.showerror("错误", f"删除失败: {str(e)}")
                 self.status_var.set(f"❌ 删除失败: {str(e)}")

@@ -1,3 +1,4 @@
 {
-  "send_mode": "直接发送"
+  "send_mode": "添加到输入框",
+  "always_on_top": true
 }

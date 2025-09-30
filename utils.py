@@ -9,6 +9,9 @@ import win32gui
 import win32con
 from threading import Timer, Thread
 from components.Input_dialog import ChineseInputDialog
+import threading
+
+json_file_lock = threading.Lock()
 
 
 def ask_string(parent, title, prompt, initial_value="", multiline=False):
@@ -45,10 +48,26 @@ def init_scripts_data():
             "临时": {}
         }
     }
-    # self.config_data = {}
-    # # "send_mode": "直接发送",
-    # # "always_on_top": true,
-    # # "api_base_url": "http://localhost:8000/api",
-    # # "current_user_id": null,
-    # # "is_logged_in": false
+    if not os.path.exists('scripts.json'):
+        with json_file_lock:
+            with open(scripts.json, 'w', encoding='utf-8') as f:
+                json.dump(scripts_data, f, ensure_ascii=False, indent=2)
+
     return scripts_data
+
+
+def init_config_data():
+    """初始化默认配置数据"""
+    config = {
+        "send_mode": "直接发送",
+        "always_on_top": True,
+        "api_base_url": "http://localhost:8000/api",
+        "current_user_id": None,
+        "is_logged_in": False
+    }
+    if not os.path.exists('config.json'):
+        with json_file_lock:
+            with open(config.json, 'w', encoding='utf-8') as f:
+                json.dump(config, f, ensure_ascii=False, indent=2)
+
+    return config

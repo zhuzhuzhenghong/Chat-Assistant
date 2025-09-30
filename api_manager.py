@@ -63,26 +63,29 @@ class APIManager:
                 "小组话术": {...},
                 "私人话术": {...}
             },
+            "config_data":{
+
+            }
             "last_updated": "2024-01-01T12:00:00Z"
         }
         """
         uid = user_id or self.user_id or "default"
         result = self._make_request('GET', f'/user/{uid}/data')
-        return result.get('data', {})
+        return result
     
-    def save_user_data(self, data: Dict[str, Any], user_id: str = None) -> bool:
+    def save_user_data(self, data: Dict[str, Any], user_id: str = None) -> Dict[str, Any]:
         """保存用户完整数据
         
         参数:
         data: 完整的用户数据结构
         """
-        uid = user_id if user_id is not None else (self.user_id if self.user_id is not None else "default")
+        uid = user_id or self.user_id or "default"
         request_data = {
             'user_id': uid,
             'data': data
         }
         result = self._make_request('PUT', f'/user/{uid}/data', request_data)
-        return result.get('success', False)
+        return result
 
     
     # ==================== 用户管理（为登录功能预留） ====================
@@ -103,14 +106,14 @@ class APIManager:
         
         return result
     
-    def logout(self) -> bool:
+    def logout(self) -> Dict[str, Any]:
         """用户登出"""
         result = self._make_request('POST', '/auth/logout')
         if result.get('success'):
             self.user_id = None
             if 'Authorization' in self.session.headers:
                 del self.session.headers['Authorization']
-        return result.get('success', False)
+        return result
     
     # ==================== 文件导入导出（格式转换） ====================
     
@@ -124,7 +127,7 @@ class APIManager:
         
         返回转换后的JSON数据结构
         """
-        uid = user_id if user_id is not None else (self.user_id if self.user_id is not None else "default")
+        uid = user_id or self.user_id or "default"
         
         try:
             # 使用multipart/form-data上传文件

@@ -10,94 +10,10 @@ import win32con
 from threading import Timer, Thread
 from api_manager import APIManager
 from data_adapter import DataAdapter
+import utils
 
-class ChineseInputDialog:
-    """中文输入对话框"""
-    def __init__(self, parent, title, prompt, initial_value="", multiline=False):
-        self.result = None
-        self.multiline = multiline
-        self.dialog = tk.Toplevel(parent)
-        self.dialog.title(title)
-        
-        if multiline:
-            self.dialog.geometry("450x300")
-        else:
-            self.dialog.geometry("350x150")
-        
-        self.dialog.resizable(False, False)
-        self.dialog.transient(parent)
-        self.dialog.grab_set()
-        
-        # 居中显示
-        self.dialog.geometry("+%d+%d" % (
-            parent.winfo_rootx() + 50,
-            parent.winfo_rooty() + 50
-        ))
-        
-        # 创建界面
-        main_frame = ttk.Frame(self.dialog, padding="20")
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # 提示文字
-        ttk.Label(main_frame, text=prompt, font=("微软雅黑", 10)).pack(pady=(0, 15))
-        
-        if multiline:
-            # 多行输入框
-            text_frame = ttk.Frame(main_frame)
-            text_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 20))
-            
-            self.text_widget = tk.Text(text_frame, font=("微软雅黑", 10), height=8, wrap=tk.WORD)
-            scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=self.text_widget.yview)
-            self.text_widget.configure(yscrollcommand=scrollbar.set)
-            
-            self.text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-            
-            if initial_value:
-                self.text_widget.insert(tk.END, initial_value)
-                self.text_widget.tag_add(tk.SEL, "1.0", tk.END)
-            
-            self.text_widget.focus()
-        else:
-            # 单行输入框
-            self.entry_var = tk.StringVar(value=initial_value)
-            self.entry = ttk.Entry(main_frame, textvariable=self.entry_var, font=("微软雅黑", 10))
-            self.entry.pack(fill=tk.X, pady=(0, 20))
-            self.entry.focus()
-            self.entry.select_range(0, tk.END)
-        
-        # 按钮
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=tk.X)
-        
-        ttk.Button(button_frame, text="确定", command=self.ok_clicked).pack(side=tk.RIGHT, padx=(5, 0))
-        ttk.Button(button_frame, text="取消", command=self.cancel_clicked).pack(side=tk.RIGHT)
-        
-        # 绑定快捷键
-        if not multiline:
-            self.dialog.bind('<Return>', lambda e: self.ok_clicked())
-        self.dialog.bind('<Escape>', lambda e: self.cancel_clicked())
-        self.dialog.bind('<Control-Return>', lambda e: self.ok_clicked())
-    
-    def ok_clicked(self):
-        if self.multiline:
-            self.result = self.text_widget.get("1.0", tk.END).strip()
-        else:
-            self.result = self.entry_var.get().strip()
-        self.dialog.destroy()
-    
-    def cancel_clicked(self):
-        self.result = None
-        self.dialog.destroy()
-    
-    def show(self):
-        self.dialog.wait_window()
-        return self.result
 
-def ask_string(parent, title, prompt, initial_value="", multiline=False):
-    """显示中文输入对话框"""
-    dialog = ChineseInputDialog(parent, title, prompt, initial_value, multiline)
-    return dialog.show()
+
 
 class AssistantOptimized:
     def __init__(self):
@@ -107,7 +23,7 @@ class AssistantOptimized:
         self.root.resizable(True, True)
         
         # 核心数据
-        self.data_file = "scripts.json"
+        self.script_file = "scripts.json"
         
         # Tab数据结构 - 先设置默认值
         self.current_primary_tab = "公司话术"
@@ -158,23 +74,7 @@ class AssistantOptimized:
     def init_tab_structure(self):
         """初始化Tab数据结构"""
         if not hasattr(self, 'tab_data') or not self.tab_data:
-            self.tab_data = {
-                "公司话术": {
-                    "常用": {},
-                    "产品介绍": {},
-                    "售后服务": {}
-                },
-                "小组话术": {
-                    "日常": {},
-                    "专业": {},
-                    "紧急": {}
-                },
-                "私人话术": {
-                    "个人": {},
-                    "备用": {},
-                    "临时": {}
-                }
-            }
+            self.tab_data = utils.init_scripts_data()
     
     def load_data_from_adapter(self):
         """从数据适配器加载数据"""
@@ -231,10 +131,10 @@ class AssistantOptimized:
                 
                 # 只保存到本地，不自动同步云端
                 # 更新数据适配器中的数据
-                self.data_adapter._user_data["user_id"] = self.current_user_id or "default"
-                self.data_adapter._user_data["scripts_data"] = self.tab_data
+                self.data_adapter.user_data["user_id"] = self.current_user_id or "default"
+                self.data_adapter.user_data["scripts_data"] = self.tab_data
                 # 保存到本地文件
-                self.data_adapter._save_local_data()
+                # self.data_adapter._save_local_data()
                 
                 # 保存本地配置
                 config = {
@@ -243,7 +143,7 @@ class AssistantOptimized:
                     'current_primary_tab': self.current_primary_tab,
                     'current_secondary_tab': self.current_secondary_tab
                 }
-                self.data_adapter.update_config(config)
+                # self.data_adapter.update_config(config)
         except Exception as e:
             print(f"保存数据失败: {e}")
     
@@ -256,7 +156,8 @@ class AssistantOptimized:
             # 未登录状态下，不传递api_manager，避免请求云端数据
             self.data_adapter = DataAdapter(
                 api_manager=None,  # 未登录时不使用API
-                data_file=self.data_file,
+                script_file=self.script_file,
+                config_file=self.config_file,
                 user_id="default"
             )
             
@@ -269,7 +170,8 @@ class AssistantOptimized:
             # 如果初始化失败，使用本地文件模式
             self.data_adapter = DataAdapter(
                 api_manager=None,
-                data_file=self.data_file,
+                script_file=self.script_file,
+                config_file=self.config_file,
                 user_id="default"
             )
             self.load_data_from_adapter()
@@ -603,7 +505,7 @@ class AssistantOptimized:
     
     def rename_secondary_tab_by_name(self, old_name):
         """通过名称重命名二级Tab"""
-        new_name = ask_string(self.root, "修改名称", "请输入新的分类名称:", old_name)
+        new_name = utils.ask_string(self.root, "修改名称", "请输入新的分类名称:", old_name)
         if new_name and new_name.strip() and new_name != old_name:
             new_name = new_name.strip()
             if new_name not in self.tab_data[self.current_primary_tab]:
@@ -720,7 +622,7 @@ class AssistantOptimized:
     
     def add_category(self):
         """添加分类"""
-        category = ask_string(self.root, "添加分类", "请输入分类名称:")
+        category = utils.ask_string(self.root, "添加分类", "请输入分类名称:")
         if category and category.strip():
             category = category.strip()
             if category not in self.scripts:
@@ -761,12 +663,12 @@ class AssistantOptimized:
                 messagebox.showwarning("警告", "请先添加分类！")
                 return
             
-            category = ask_string(self.root, "选择分类", f"请输入分类名称（现有分类: {', '.join(categories)}）:")
+            category = utils.ask_string(self.root, "选择分类", f"请输入分类名称（现有分类: {', '.join(categories)}）:")
             if not category or category not in self.scripts:
                 messagebox.showwarning("警告", "请输入有效的分类名称！")
                 return
         
-        script = ask_string(self.root, "添加话术", f"请输入话术内容（分类: {category}）:", "", True)
+        script = utils.ask_string(self.root, "添加话术", f"请输入话术内容（分类: {category}）:", "", True)
         if script and script.strip():
             # 只添加到当前scripts，保存时会同步到tab_data
             self.scripts[category].append(script.strip())
@@ -788,7 +690,7 @@ class AssistantOptimized:
         if category not in self.scripts:
             self.scripts[category] = []
         
-        script = ask_string(self.root, "添加话术", f"请输入话术内容（分类: {category}）:", "", True)
+        script = utils.ask_string(self.root, "添加话术", f"请输入话术内容（分类: {category}）:", "", True)
         if script and script.strip():
             # 添加到当前scripts
             self.scripts[category].append(script.strip())
@@ -814,7 +716,7 @@ class AssistantOptimized:
         if values:
             # 编辑话术
             old_script = values[0]
-            new_script = ask_string(self.root, "编辑话术", "请修改话术内容:", old_script, True)
+            new_script = utils.ask_string(self.root, "编辑话术", "请修改话术内容:", old_script, True)
             if new_script and new_script.strip():
                 # 找到对应的分类和索引
                 parent = self.tree.parent(item)
@@ -839,7 +741,7 @@ class AssistantOptimized:
             # 编辑分类
             item_text = self.tree.item(item, "text")
             old_category = item_text
-            new_category = ask_string(self.root, "编辑分类", "请修改分类名称:", old_category)
+            new_category = utils.ask_string(self.root, "编辑分类", "请修改分类名称:", old_category)
             if new_category and new_category.strip() and new_category != old_category:
                 new_category = new_category.strip()
                 if new_category not in self.scripts:
@@ -1266,7 +1168,7 @@ class AssistantOptimized:
     
     def add_primary_tab(self):
         """添加一级Tab"""
-        tab_name = ask_string(self.root, "新增一级分类", "请输入分类名称:")
+        tab_name = utils.ask_string(self.root, "新增一级分类", "请输入分类名称:")
         if tab_name and tab_name.strip():
             tab_name = tab_name.strip()
             if tab_name not in self.tab_data:
@@ -1298,7 +1200,7 @@ class AssistantOptimized:
     
     def add_secondary_tab(self):
         """添加二级Tab"""
-        tab_name = ask_string(self.root, "新增二级分类", f"请输入分类名称（所属: {self.current_primary_tab}）:")
+        tab_name = utils.ask_string(self.root, "新增二级分类", f"请输入分类名称（所属: {self.current_primary_tab}）:")
         if tab_name and tab_name.strip():
             tab_name = tab_name.strip()
             if tab_name not in self.tab_data[self.current_primary_tab]:
@@ -1342,7 +1244,7 @@ class AssistantOptimized:
     
     def rename_primary_tab(self, tab_index, old_name):
         """重命名一级Tab"""
-        new_name = ask_string(self.root, "修改名称", "请输入新的分类名称:", old_name)
+        new_name = utils.ask_string(self.root, "修改名称", "请输入新的分类名称:", old_name)
         if new_name and new_name.strip() and new_name != old_name:
             new_name = new_name.strip()
             if new_name not in self.tab_data:
@@ -1509,7 +1411,8 @@ class AssistantOptimized:
             # 重新初始化数据适配器为默认用户
             self.data_adapter = DataAdapter(
                 api_manager=self.api_manager,
-                data_file=self.data_file,
+                script_file=self.script_file,
+                config_file=self.config_file,
                 user_id="default"
             )
             
@@ -1563,7 +1466,7 @@ class AssistantOptimized:
             }
             
             # 上传到云端
-            success = self.data_adapter.save_full_data(full_data)
+            success = self.data_adapter.push_local_scripts_data(full_data)
             if success:
                 messagebox.showinfo("上传成功", "数据已成功上传到云端！")
                 self.status_var.set("数据上传成功")
@@ -1596,7 +1499,7 @@ class AssistantOptimized:
             self.data_adapter.user_id = self.current_user_id
             
             # 从云端下载数据
-            success = self.data_adapter.refresh_from_cloud()
+            success = self.data_adapter.load_user_data()
             if success:
                 # 重新加载数据到界面
                 self.load_data_from_adapter()
@@ -1607,7 +1510,6 @@ class AssistantOptimized:
             else:
                 messagebox.showwarning("下载失败", "云端暂无数据或下载失败")
                 self.status_var.set("云端暂无数据")
-                
         except Exception as e:
             messagebox.showerror("下载失败", f"下载时发生错误: {str(e)}")
             self.status_var.set(f"下载失败: {str(e)}")
@@ -1625,7 +1527,7 @@ class AssistantOptimized:
                 self.data_adapter.user_id = self.current_user_id
                 
                 # 刷新云端数据
-                success = self.data_adapter.refresh_from_cloud()
+                success = self.data_adapter.load_user_data()
                 if success:
                     # 重新加载数据到界面
                     self.load_data_from_adapter()

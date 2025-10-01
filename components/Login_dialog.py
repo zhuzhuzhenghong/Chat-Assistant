@@ -1,12 +1,19 @@
-import tkinter as tk
-from tkinter import ttk, messagebox
+"""
+PySide6版本的登录对话框组件
+"""
+from PySide6.QtWidgets import (
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
+    QPushButton, QMessageBox, QFrame
+)
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QFont
 from typing import Callable, Optional, Tuple
 
 
-class LoginDialog:
+class LoginDialog(QDialog):
     """登录对话框组件"""
     
-    def __init__(self, parent: tk.Tk, login_callback: Callable[[str, str], bool]):
+    def __init__(self, parent=None, login_callback: Callable[[str, str], bool] = None):
         """
         初始化登录对话框
         
@@ -14,137 +21,107 @@ class LoginDialog:
             parent: 父窗口
             login_callback: 登录回调函数，接收用户名和密码，返回登录是否成功
         """
-        self.parent = parent
+        super().__init__(parent)
         self.login_callback = login_callback
-        self.dialog = None
-        self.username_var = None
-        self.password_var = None
         self.result = None
         
-    def show(self) -> Optional[Tuple[str, str]]:
-        """
-        显示登录对话框
+        self.setup_ui()
         
-        Returns:
-            如果登录成功返回 (username, password)，否则返回 None
-        """
-        # 创建登录对话框
-        self.dialog = tk.Toplevel(self.parent)
-        self.dialog.title("用户登录")
-        self.dialog.geometry("350x220")
-        self.dialog.resizable(False, False)
-        self.dialog.transient(self.parent)
-        self.dialog.grab_set()
+    def setup_ui(self):
+        """设置界面"""
+        self.setWindowTitle("用户登录")
+        self.setFixedSize(350, 220)
+        self.setModal(True)
         
-        # 居中显示
-        self.dialog.geometry("+%d+%d" % (
-            self.parent.winfo_rootx() + 50,
-            self.parent.winfo_rooty() + 50
-        ))
+        # 主布局
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(25, 25, 25, 25)
+        main_layout.setSpacing(15)
         
-        # 创建界面
-        self._create_widgets()
-        
-        # 等待对话框关闭
-        self.dialog.wait_window()
-        
-        return self.result
-    
-    def _create_widgets(self):
-        """创建对话框界面"""
-        # 主框架
-        main_frame = ttk.Frame(self.dialog, padding="25")
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        main_frame.columnconfigure(1, weight=1)
+        # 标题
+        title_label = QLabel("用户登录")
+        title_label.setAlignment(Qt.AlignCenter)
+        title_font = QFont()
+        title_font.setPointSize(14)
+        title_font.setBold(True)
+        title_label.setFont(title_font)
+        main_layout.addWidget(title_label)
         
         # 用户名
-        ttk.Label(main_frame, text="用户名:", font=("微软雅黑", 10)).grid(
-            row=0, column=0, sticky="w", pady=(0, 8)
-        )
-        self.username_var = tk.StringVar()
-        username_entry = ttk.Entry(
-            main_frame, 
-            textvariable=self.username_var, 
-            font=("微软雅黑", 10), 
-            width=25
-        )
-        username_entry.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 15))
-        username_entry.focus()
+        username_label = QLabel("用户名:")
+        username_label.setFont(QFont("Microsoft YaHei UI", 10))
+        main_layout.addWidget(username_label)
+        
+        self.username_edit = QLineEdit()
+        self.username_edit.setFont(QFont("Microsoft YaHei UI", 10))
+        self.username_edit.setMinimumHeight(32)
+        self.username_edit.setPlaceholderText("请输入用户名")
+        main_layout.addWidget(self.username_edit)
         
         # 密码
-        ttk.Label(main_frame, text="密码:", font=("微软雅黑", 10)).grid(
-            row=2, column=0, sticky="w", pady=(0, 8)
-        )
-        self.password_var = tk.StringVar()
-        password_entry = ttk.Entry(
-            main_frame, 
-            textvariable=self.password_var, 
-            show="*", 
-            font=("微软雅黑", 10), 
-            width=25
-        )
-        password_entry.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(0, 25))
+        password_label = QLabel("密码:")
+        password_label.setFont(QFont("Microsoft YaHei UI", 10))
+        main_layout.addWidget(password_label)
         
-        # 按钮框架
-        button_frame = ttk.Frame(main_frame)
-        button_frame.grid(row=4, column=0, columnspan=2, sticky="ew")
-        button_frame.columnconfigure(0, weight=1)
-        button_frame.columnconfigure(1, weight=1)
+        self.password_edit = QLineEdit()
+        self.password_edit.setFont(QFont("Microsoft YaHei UI", 10))
+        self.password_edit.setMinimumHeight(32)
+        self.password_edit.setEchoMode(QLineEdit.Password)
+        self.password_edit.setPlaceholderText("请输入密码")
+        main_layout.addWidget(self.password_edit)
         
-        # 取消按钮
-        cancel_btn = ttk.Button(
-            button_frame, 
-            text="取消", 
-            command=self._on_cancel, 
-            width=10
-        )
-        cancel_btn.grid(row=0, column=0, padx=(0, 10), sticky="e")
+        # 按钮
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
         
-        # 登录按钮
-        login_btn = ttk.Button(
-            button_frame, 
-            text="登录", 
-            command=self._on_login, 
-            width=10
-        )
-        login_btn.grid(row=0, column=1, sticky="e")
+        self.cancel_btn = QPushButton("取消")
+        self.cancel_btn.setMinimumSize(80, 32)
+        self.cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(self.cancel_btn)
         
-        # 绑定键盘事件
-        if self.dialog:
-            self.dialog.bind('<Return>', lambda e: self._on_login())
-            self.dialog.bind('<Escape>', lambda e: self._on_cancel())
+        self.login_btn = QPushButton("登录")
+        self.login_btn.setMinimumSize(80, 32)
+        self.login_btn.setObjectName("primary_button")
+        self.login_btn.clicked.connect(self.handle_login)
+        button_layout.addWidget(self.login_btn)
+        
+        main_layout.addLayout(button_layout)
+        
+        # 设置默认焦点
+        self.username_edit.setFocus()
+        
+        # 绑定回车键
+        self.username_edit.returnPressed.connect(self.password_edit.setFocus)
+        self.password_edit.returnPressed.connect(self.handle_login)
     
-    def _on_login(self):
-        """处理登录按钮点击"""
-        if not self.username_var or not self.password_var:
-            return
-            
-        username = self.username_var.get().strip()
-        password = self.password_var.get().strip()
+    def handle_login(self):
+        """处理登录"""
+        username = self.username_edit.text().strip()
+        password = self.password_edit.text().strip()
         
         if not username or not password:
-            messagebox.showwarning("警告", "请输入用户名和密码！")
+            QMessageBox.warning(self, "警告", "请输入用户名和密码！")
             return
         
         try:
-            # 调用登录回调函数
-            success = self.login_callback(username, password)
-            if success:
+            if self.login_callback:
+                success = self.login_callback(username, password)
+                if success:
+                    self.result = (username, password)
+                    self.accept()
+            else:
+                # 如果没有回调函数，直接返回结果
                 self.result = (username, password)
-                if self.dialog:
-                    self.dialog.destroy()
-            # 如果登录失败，回调函数应该已经显示了错误消息
+                self.accept()
         except Exception as e:
-            messagebox.showerror("登录失败", f"登录时发生错误: {str(e)}")
+            QMessageBox.critical(self, "登录失败", f"登录时发生错误: {str(e)}")
     
-    def _on_cancel(self):
-        """处理取消按钮点击"""
-        self.result = None
-        if self.dialog:
-            self.dialog.destroy()
+    def get_result(self) -> Optional[Tuple[str, str]]:
+        """获取登录结果"""
+        return self.result
 
 
-def show_login_dialog(parent: tk.Tk, login_callback: Callable[[str, str], bool]) -> Optional[Tuple[str, str]]:
+def show_login_dialog(parent=None, login_callback: Callable[[str, str], bool] = None) -> Optional[Tuple[str, str]]:
     """
     显示登录对话框的便捷函数
     
@@ -156,4 +133,6 @@ def show_login_dialog(parent: tk.Tk, login_callback: Callable[[str, str], bool])
         如果登录成功返回 (username, password)，否则返回 None
     """
     dialog = LoginDialog(parent, login_callback)
-    return dialog.show()
+    if dialog.exec() == QDialog.Accepted:
+        return dialog.get_result()
+    return None

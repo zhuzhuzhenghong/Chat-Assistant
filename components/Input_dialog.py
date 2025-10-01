@@ -1,93 +1,132 @@
-import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
-import json
-import os
-import pyautogui
-import time
-import pyperclip
-import win32gui
-import win32con
-from threading import Timer, Thread
+"""
+PySide6版本的输入对话框组件
+"""
+from PySide6.QtWidgets import (
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
+    QTextEdit, QPushButton, QFrame
+)
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
+from typing import Optional
 
-class ChineseInputDialog:
+
+class ChineseInputDialog(QDialog):
     """中文输入对话框"""
-    def __init__(self, parent, title, prompt, initial_value="", multiline=False):
+    
+    def __init__(self, parent=None, title="输入", prompt="请输入内容:", 
+                 initial_value="", multiline=False):
+        """
+        初始化输入对话框
+        
+        Args:
+            parent: 父窗口
+            title: 对话框标题
+            prompt: 提示文字
+            initial_value: 初始值
+            multiline: 是否多行输入
+        """
+        super().__init__(parent)
         self.result = None
         self.multiline = multiline
-        self.dialog = tk.Toplevel(parent)
-        self.dialog.title(title)
-
-        if multiline:
-            self.dialog.geometry("450x300")
+        
+        self.setup_ui(title, prompt, initial_value)
+        
+    def setup_ui(self, title: str, prompt: str, initial_value: str):
+        """设置界面"""
+        self.setWindowTitle(title)
+        self.setModal(True)
+        
+        if self.multiline:
+            self.setFixedSize(450, 300)
         else:
-            self.dialog.geometry("350x150")
-
-        self.dialog.resizable(False, False)
-        self.dialog.transient(parent)
-        self.dialog.grab_set()
-
-        # 居中显示
-        self.dialog.geometry("+%d+%d" % (
-            parent.winfo_rootx() + 50,
-            parent.winfo_rooty() + 50
-        ))
-
-        # 创建界面
-        main_frame = ttk.Frame(self.dialog, padding="20")
-        main_frame.pack(fill=tk.BOTH, expand=True)
-
+            self.setFixedSize(350, 150)
+        
+        # 主布局
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(15)
+        
         # 提示文字
-        ttk.Label(main_frame, text=prompt, font=("微软雅黑", 10)).pack(pady=(0, 15))
-
-        if multiline:
+        prompt_label = QLabel(prompt)
+        prompt_label.setFont(QFont("Microsoft YaHei UI", 10))
+        main_layout.addWidget(prompt_label)
+        
+        if self.multiline:
             # 多行输入框
-            text_frame = ttk.Frame(main_frame)
-            text_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 20))
-
-            self.text_widget = tk.Text(text_frame, font=("微软雅黑", 10), height=8, wrap=tk.WORD)
-            scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=self.text_widget.yview)
-            self.text_widget.configure(yscrollcommand=scrollbar.set)
-
-            self.text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
+            self.text_edit = QTextEdit()
+            self.text_edit.setFont(QFont("Microsoft YaHei UI", 10))
+            self.text_edit.setMinimumHeight(150)
             if initial_value:
-                self.text_widget.insert(tk.END, initial_value)
-                self.text_widget.tag_add(tk.SEL, "1.0", tk.END)
-
-            self.text_widget.focus()
+                self.text_edit.setPlainText(initial_value)
+                self.text_edit.selectAll()
+            self.text_edit.setFocus()
+            main_layout.addWidget(self.text_edit)
         else:
             # 单行输入框
-            self.entry_var = tk.StringVar(value=initial_value)
-            self.entry = ttk.Entry(main_frame, textvariable=self.entry_var, font=("微软雅黑", 10))
-            self.entry.pack(fill=tk.X, pady=(0, 20))
-            self.entry.focus()
-            self.entry.select_range(0, tk.END)
-
+            self.line_edit = QLineEdit()
+            self.line_edit.setFont(QFont("Microsoft YaHei UI", 10))
+            self.line_edit.setMinimumHeight(32)
+            if initial_value:
+                self.line_edit.setText(initial_value)
+                self.line_edit.selectAll()
+            self.line_edit.setFocus()
+            main_layout.addWidget(self.line_edit)
+        
         # 按钮
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=tk.X)
-
-        ttk.Button(button_frame, text="确定", command=self.ok_clicked).pack(side=tk.RIGHT, padx=(5, 0))
-        ttk.Button(button_frame, text="取消", command=self.cancel_clicked).pack(side=tk.RIGHT)
-
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        
+        cancel_btn = QPushButton("取消")
+        cancel_btn.setMinimumSize(80, 32)
+        cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_btn)
+        
+        ok_btn = QPushButton("确定")
+        ok_btn.setMinimumSize(80, 32)
+        ok_btn.setObjectName("primary_button")
+        ok_btn.clicked.connect(self.handle_ok)
+        button_layout.addWidget(ok_btn)
+        
+        main_layout.addLayout(button_layout)
+        
         # 绑定快捷键
-        if not multiline:
-            self.dialog.bind('<Return>', lambda e: self.ok_clicked())
-        self.dialog.bind('<Escape>', lambda e: self.cancel_clicked())
-        self.dialog.bind('<Control-Return>', lambda e: self.ok_clicked())
-
-    def ok_clicked(self):
+        if not self.multiline:
+            self.line_edit.returnPressed.connect(self.handle_ok)
+    
+    def handle_ok(self):
+        """处理确定按钮"""
         if self.multiline:
-            self.result = self.text_widget.get("1.0", tk.END).strip()
+            self.result = self.text_edit.toPlainText().strip()
         else:
-            self.result = self.entry_var.get().strip()
-        self.dialog.destroy()
-
-    def cancel_clicked(self):
-        self.result = None
-        self.dialog.destroy()
-
-    def show(self):
-        self.dialog.wait_window()
+            self.result = self.line_edit.text().strip()
+        
+        self.accept()
+    
+    def get_result(self) -> Optional[str]:
+        """获取输入结果"""
         return self.result
+    
+    def show(self) -> Optional[str]:
+        """显示对话框并返回结果"""
+        if self.exec() == QDialog.Accepted:
+            return self.get_result()
+        return None
+
+
+def ask_string(parent=None, title="输入", prompt="请输入内容:", 
+               initial_value="", multiline=False) -> Optional[str]:
+    """
+    显示输入对话框的便捷函数
+    
+    Args:
+        parent: 父窗口
+        title: 对话框标题
+        prompt: 提示文字
+        initial_value: 初始值
+        multiline: 是否多行输入
+        
+    Returns:
+        用户输入的字符串，如果取消则返回None
+    """
+    dialog = ChineseInputDialog(parent, title, prompt, initial_value, multiline)
+    return dialog.show()

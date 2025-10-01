@@ -1,20 +1,12 @@
-import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
 import json
 import os
-import pyautogui
-import time
-import pyperclip
-import win32gui
-import win32con
-from threading import Timer, Thread
 from components.Input_dialog import ChineseInputDialog
 import threading
 
 json_file_lock = threading.Lock()
 
 
-def ask_string(parent, title, prompt, initial_value="", multiline=False):
+def ask_string(parent, title , prompt, initial_value="", multiline=False):
     """显示中文输入对话框"""
     dialog = ChineseInputDialog(parent, title, prompt, initial_value, multiline)
     return dialog.show()
@@ -50,7 +42,7 @@ def init_scripts_data():
     }
     if not os.path.exists('scripts.json'):
         with json_file_lock:
-            with open(scripts.json, 'w', encoding='utf-8') as f:
+            with open('scripts.json', 'w', encoding='utf-8') as f:
                 json.dump(scripts_data, f, ensure_ascii=False, indent=2)
 
     return scripts_data
@@ -67,7 +59,7 @@ def init_config_data():
     }
     if not os.path.exists('config.json'):
         with json_file_lock:
-            with open(config.json, 'w', encoding='utf-8') as f:
+            with open('config.json', 'w', encoding='utf-8') as f:
                 json.dump(config, f, ensure_ascii=False, indent=2)
 
     return config

@@ -1,3 +1,6 @@
+from typing import Any
+
+
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 import json
@@ -10,6 +13,7 @@ import win32con
 from threading import Timer, Thread
 from api_manager import APIManager
 from data_adapter import DataAdapter
+from components.Login_dialog import show_login_dialog
 import utils
 
 
@@ -39,6 +43,8 @@ class AssistantOptimized:
         self.always_on_top = True  # 默认置顶
 
         # 用户登录状态
+        self.password = ""
+        self.username = ""
         self.current_user_id = None
         self.is_logged_in = False
 
@@ -51,8 +57,8 @@ class AssistantOptimized:
         # # 初始化Tab数据结构
         # self.init_tab_structure()
 
-        # 加载数据（这会更新tab_data和当前Tab设置）
-        self.tab_data = None
+        # 加载数据（这会更新scripts_data和当前Tab设置）
+        self.scripts_data = {}
         self.current_scripts_data = {}
 
         # 初始化数据适配器
@@ -78,7 +84,7 @@ class AssistantOptimized:
                 api_manager=None,  # 未登录时不使用API
                 script_file=self.script_file,
                 config_file=self.config_file,
-                user_id="default"
+                user_id=0
             )
             print("数据适配器初始化成功")
         except Exception as e:
@@ -94,6 +100,13 @@ class AssistantOptimized:
             print("API管理器初始化成功")
         except Exception as e:
             print(f"API管理器初始化失败: {e}")
+    
+    def refresh_all_ui(self):
+        """刷新所有界面元素"""
+        self.load_data_from_adapter()
+        self.update_primary_tabs()    # 重新渲染一级菜单
+        self.update_secondary_tabs()  # 更新二级菜单
+        self.update_tree()           # 更新话术列表
 
     def load_data_from_adapter(self):
         """从数据适配器加载数据"""
@@ -101,12 +114,12 @@ class AssistantOptimized:
             # 获取完整的话术数据结构
             scripts_data = self.data_adapter.get_scripts_data()
             if scripts_data:
-                self.tab_data = self.data_adapter.get_scripts_data()
+                self.scripts_data = self.data_adapter.get_scripts_data()
                 # 确保当前Tab存在
-                if self.current_primary_tab not in self.tab_data:
-                    self.current_primary_tab = list(self.tab_data.keys())[0]
-                if self.current_secondary_tab not in self.tab_data[self.current_primary_tab]:
-                    self.current_secondary_tab = list(self.tab_data[self.current_primary_tab].keys())[0]
+                if self.current_primary_tab not in self.scripts_data:
+                    self.current_primary_tab = list(self.scripts_data.keys())[0]
+                if self.current_secondary_tab not in self.scripts_data[self.current_primary_tab]:
+                    self.current_secondary_tab = list(self.scripts_data[self.current_primary_tab].keys())[0]
             else:
                 # 如果没有数据，使用默认结构
                 self.init_tab_structure()
@@ -120,16 +133,111 @@ class AssistantOptimized:
                 # self.current_secondary_tab = config.get('current_secondary_tab', self.current_secondary_tab)
 
             # 返回当前选中Tab的数据
-            self.current_scripts_data = self.get_current_tab_data()
+            self.current_scripts_data = self.get_current_scripts_data()
         else:
             # 如果没有数据适配器，使用默认数据
             self.init_tab_structure()
-            self.current_scripts_data = self.get_current_tab_data()
+            self.current_scripts_data = self.get_current_scripts_data()
+
+    def update_primary_tabs(self):
+        """更新一级Tab按钮"""
+        # 清空现有的一级Tab
+        for tab_id in self.primary_notebook.tabs():
+            self.primary_notebook.forget(tab_id)
+        self.primary_tabs.clear()
+        
+        # 根据当前数据重新创建一级Tab
+        if hasattr(self, 'scripts_data') and self.scripts_data:
+            for tab_name in self.scripts_data.keys():
+                tab_frame = ttk.Frame(self.primary_notebook)
+                self.primary_tabs[tab_name] = tab_frame
+                self.primary_notebook.add(tab_frame, text=tab_name)
+        else:
+            # 如果没有数据，创建默认Tab
+            for tab_name in ["公司话术", "小组话术", "私人话术"]:
+                tab_frame = ttk.Frame(self.primary_notebook)
+                self.primary_tabs[tab_name] = tab_frame
+                self.primary_notebook.add(tab_frame, text=tab_name)
+        
+        # 确保当前Tab设置正确
+        if hasattr(self, 'scripts_data') and self.scripts_data:
+            # 如果当前Tab不存在于新数据中，选择第一个Tab
+            if self.current_primary_tab not in self.scripts_data:
+                self.current_primary_tab = list(self.scripts_data.keys())[0]
+            
+            # 确保当前二级Tab也存在
+            if self.current_secondary_tab not in self.scripts_data[self.current_primary_tab]:
+                self.current_secondary_tab = list(self.scripts_data[self.current_primary_tab].keys())[0]
+            
+            # 选中正确的一级Tab
+            for i, tab_name in enumerate(self.scripts_data.keys()):
+                if tab_name == self.current_primary_tab:
+                    self.primary_notebook.select(i)
+                    break
+        self.load_current_scripts_data()
+
+    def update_secondary_tabs(self):
+        """更新二级Tab按钮"""
+        # 清空现有的二级Tab按钮
+        for widget in self.secondary_buttons_frame.winfo_children():
+            widget.destroy()
+        self.secondary_tab_buttons.clear()
+
+        # 添加当前一级Tab对应的二级Tab按钮
+        if self.current_primary_tab in self.scripts_data:
+            row = 0
+            col = 0
+            max_cols = 4  # 每行最多4个按钮，让Tab显示更多文字
+
+            for tab_name in self.scripts_data[self.current_primary_tab].keys():
+                # 创建按钮样式
+                is_current = (tab_name == self.current_secondary_tab)
+
+                btn = ttk.Button(
+                    self.secondary_buttons_frame,
+                    text=tab_name,
+                    command=lambda name=tab_name: self.select_secondary_tab(name),
+                    style='Selected.TButton' if is_current else 'TButton',
+                    takefocus=False  # 防止按钮获得焦点
+                )
+
+                btn.grid(row=row, column=col, padx=3, pady=3, sticky="ew")
+                btn.bind("<Button-3>", lambda e, name=tab_name: self.show_secondary_tab_context_menu(e, name))
+
+                self.secondary_tab_buttons[tab_name] = btn
+
+                col += 1
+                if col >= max_cols:
+                    col = 0
+                    row += 1
+
+            # 配置列权重以实现均匀分布
+            current_row_cols = col if col > 0 else max_cols
+            for i in range(max_cols):
+                self.secondary_buttons_frame.columnconfigure(i, weight=1)
+
+    def update_tree(self):
+        """更新树形列表"""
+        # 清空树形控件
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
+        # 添加分类和话术
+        for category, scripts in self.filtered_scripts.items():
+            # 显示所有分类，包括空分类
+            category_id = self.tree.insert("", "end", text=f"📁 {category}", open=True)
+
+            # 添加话术节点
+            if scripts:  # 如果有话术才添加话术节点
+                for script in scripts:
+                    # 限制显示长度
+                    display_text = script if len(script) <= 50 else script[:50] + "..."
+                    self.tree.insert(category_id, "end", text=f"💬 {display_text}", values=(script,))
 
     def init_tab_structure(self):
         """初始化Tab数据结构"""
-        if not hasattr(self, 'tab_data') or not self.tab_data:
-            self.tab_data = utils.init_scripts_data()
+        if not hasattr(self, 'scripts_data') or not self.scripts_data:
+            self.scripts_data = utils.init_scripts_data()
 
     # def load_scripts_data(self):
     #     """加载话术数据（兼容旧版本）"""
@@ -138,46 +246,33 @@ class AssistantOptimized:
     # def migrate_old_data(self, old_data):
     #     """迁移旧数据到新Tab结构"""
     #     self.init_tab_structure()
-    #     self.tab_data["公司话术"]["常用"] = old_data
+    #     self.scripts_data["公司话术"]["常用"] = old_data
 
-    def get_current_tab_data(self):
+    def get_current_scripts_data(self):
         """获取当前选中Tab的数据"""
-        if hasattr(self, 'tab_data'):
-            return self.tab_data.get(self.current_primary_tab, {}).get(self.current_secondary_tab, {})
+        if hasattr(self, 'scripts_data'):
+            return self.scripts_data.get(self.current_primary_tab, {}).get(self.current_secondary_tab, {})
         return {}
 
     def save_scripts(self):
         """保存话术数据"""
         try:
-            if hasattr(self, 'tab_data') and self.data_adapter:
-                # 保存当前Tab的数据到tab_data
-                self.tab_data[self.current_primary_tab][self.current_secondary_tab] = self.current_scripts_data
+            if hasattr(self, 'scripts_data') and self.data_adapter:
+                # 保存当前Tab的数据到scripts_data
+                self.scripts_data[self.current_primary_tab][self.current_secondary_tab] = self.current_scripts_data
 
                 # 只保存到本地，不自动同步云端
                 # 更新数据适配器中的数据
                 # self.data_adapter.user_data["user_id"] = self.current_user_id or "default"
-                self.data_adapter.scripts_data = self.tab_data
+                self.data_adapter.scripts_data = self.scripts_data
                 # 保存到本地文件
-                self.data_adapter.save_local_user_data()
+                self.data_adapter.save_local_scripts_data()
 
         except Exception as e:
             print(f"保存数据失败: {e}")
 
-    # def load_config(self):
-    #     """加载配置"""
-    #     if os.path.exists(self.config_file):
-    #         try:
-    #             with open(self.config_file, 'r', encoding='utf-8') as f:
-    #                 config = json.load(f)
-    #                 self.send_mode = config.get('send_mode', '直接发送')
-    #                 self.always_on_top = config.get('always_on_top', True)
-    #                 self.current_user_id = config.get('current_user_id', None)
-    #                 self.is_logged_in = config.get('is_logged_in', False)
-    #         except:
-    #             pass
-
     def save_config(self):
-        """保存配置"""
+        """保存配置数据"""
         try:
             config = {
                 'send_mode': self.send_mode,
@@ -308,8 +403,8 @@ class AssistantOptimized:
 
         # 创建一级Tab页面 - 根据实际数据创建
         self.primary_tabs = {}
-        if hasattr(self, 'tab_data') and self.tab_data:
-            for tab_name in self.tab_data.keys():
+        if hasattr(self, 'scripts_data') and self.scripts_data:
+            for tab_name in self.scripts_data.keys():
                 tab_frame = ttk.Frame(self.primary_notebook)
                 self.primary_tabs[tab_name] = tab_frame
                 self.primary_notebook.add(tab_frame, text=tab_name)
@@ -432,9 +527,9 @@ class AssistantOptimized:
         self.filtered_scripts = self.current_scripts_data.copy()
 
         # 初始化Tab显示 - 确保选中正确的Tab
-        if hasattr(self, 'tab_data') and self.tab_data:
+        if hasattr(self, 'scripts_data') and self.scripts_data:
             # 选中当前的一级Tab
-            for i, tab_name in enumerate(self.tab_data.keys()):
+            for i, tab_name in enumerate(self.scripts_data.keys()):
                 if tab_name == self.current_primary_tab:
                     self.primary_notebook.select(i)
                     break
@@ -494,9 +589,9 @@ class AssistantOptimized:
         new_name = utils.ask_string(self.root, "修改名称", "请输入新的分类名称:", old_name)
         if new_name and new_name.strip() and new_name != old_name:
             new_name = new_name.strip()
-            if new_name not in self.tab_data[self.current_primary_tab]:
+            if new_name not in self.scripts_data[self.current_primary_tab]:
                 # 更新数据结构
-                self.tab_data[self.current_primary_tab][new_name] = self.tab_data[self.current_primary_tab].pop(
+                self.scripts_data[self.current_primary_tab][new_name] = self.scripts_data[self.current_primary_tab].pop(
                     old_name)
 
                 # 更新当前Tab名称
@@ -512,7 +607,7 @@ class AssistantOptimized:
 
     def delete_secondary_tab_by_name(self, tab_name):
         """通过名称删除二级Tab"""
-        if len(self.tab_data[self.current_primary_tab]) <= 1:
+        if len(self.scripts_data[self.current_primary_tab]) <= 1:
             messagebox.showwarning("警告", "至少需要保留一个二级分类！")
             return
 
@@ -520,15 +615,15 @@ class AssistantOptimized:
                                icon='question', default='no'):
             try:
                 # 从数据结构中删除
-                if tab_name in self.tab_data[self.current_primary_tab]:
-                    del self.tab_data[self.current_primary_tab][tab_name]
+                if tab_name in self.scripts_data[self.current_primary_tab]:
+                    del self.scripts_data[self.current_primary_tab][tab_name]
 
                 # 如果删除的是当前Tab，切换到第一个Tab
                 if self.current_secondary_tab == tab_name:
-                    if self.tab_data[self.current_primary_tab]:
-                        first_secondary = list(self.tab_data[self.current_primary_tab].keys())[0]
+                    if self.scripts_data[self.current_primary_tab]:
+                        first_secondary = list(self.scripts_data[self.current_primary_tab].keys())[0]
                         self.current_secondary_tab = first_secondary
-                        self.load_current_tab_data()
+                        self.load_current_scripts_data()
 
                 # 更新界面
                 self.update_secondary_tabs()
@@ -537,24 +632,6 @@ class AssistantOptimized:
             except Exception as e:
                 messagebox.showerror("错误", f"删除失败: {str(e)}")
                 self.status_var.set(f"删除失败: {str(e)}")
-
-    def update_tree(self):
-        """更新树形列表"""
-        # 清空树形控件
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-
-        # 添加分类和话术
-        for category, scripts in self.filtered_scripts.items():
-            # 显示所有分类，包括空分类
-            category_id = self.tree.insert("", "end", text=f"📁 {category}", open=True)
-
-            # 添加话术节点
-            if scripts:  # 如果有话术才添加话术节点
-                for script in scripts:
-                    # 限制显示长度
-                    display_text = script if len(script) <= 50 else script[:50] + "..."
-                    self.tree.insert(category_id, "end", text=f"💬 {display_text}", values=(script,))
 
     def on_tree_double_click(self, event):
         """树形控件双击事件"""
@@ -613,7 +690,7 @@ class AssistantOptimized:
         if category and category.strip():
             category = category.strip()
             if category not in self.current_scripts_data:
-                # 只添加到当前scripts，保存时会同步到tab_data
+                # 只添加到当前scripts，保存时会同步到scripts_data
                 self.current_scripts_data[category] = []
                 # 保存数据
                 self.save_scripts()
@@ -657,7 +734,7 @@ class AssistantOptimized:
     #
     #     script = utils.ask_string(self.root, "添加话术", f"请输入话术内容（分类: {category}）:", "", True)
     #     if script and script.strip():
-    #         # 只添加到当前scripts，保存时会同步到tab_data
+    #         # 只添加到当前scripts，保存时会同步到scripts_data
     #         self.current_scripts_data[category].append(script.strip())
     #         # 保存数据
     #         self.save_scripts()
@@ -712,7 +789,7 @@ class AssistantOptimized:
                 # 找到话术在列表中的索引
                 try:
                     index = self.current_scripts_data[category].index(old_script)
-                    # 只更新当前scripts，保存时会同步到tab_data
+                    # 只更新当前scripts，保存时会同步到scripts_data
                     self.current_scripts_data[category][index] = new_script.strip()
                     # 保存数据
                     self.save_scripts()
@@ -732,7 +809,7 @@ class AssistantOptimized:
             if new_category and new_category.strip() and new_category != old_category:
                 new_category = new_category.strip()
                 if new_category not in self.current_scripts_data:
-                    # 只重命名当前scripts，保存时会同步到tab_data
+                    # 只重命名当前scripts，保存时会同步到scripts_data
                     self.current_scripts_data[new_category] = self.current_scripts_data.pop(old_category)
                     # 保存数据
                     self.save_scripts()
@@ -766,7 +843,7 @@ class AssistantOptimized:
 
                 # 从列表中删除
                 try:
-                    # 只从当前scripts删除，保存时会同步到tab_data
+                    # 只从当前scripts删除，保存时会同步到scripts_data
                     self.current_scripts_data[category].remove(script)
                     # 保存数据
                     self.save_scripts()
@@ -783,7 +860,7 @@ class AssistantOptimized:
             category = item_text.replace("📁 ", "")
             if messagebox.askyesno("确认删除", f"确定要删除分类 '{category}' 及其所有话术吗？",
                                    icon='question', default='no'):
-                # 只从当前scripts删除，保存时会同步到tab_data
+                # 只从当前scripts删除，保存时会同步到scripts_data
                 del self.current_scripts_data[category]
                 # 保存数据
                 self.save_scripts()
@@ -1002,7 +1079,7 @@ class AssistantOptimized:
             self.filtered_scripts = {}
 
             # 遍历所有Tab的数据
-            for primary_tab, secondary_tabs in self.tab_data.items():
+            for primary_tab, secondary_tabs in self.scripts_data.items():
                 for secondary_tab, categories in secondary_tabs.items():
                     for category, scripts in categories.items():
                         filtered_scripts = [script for script in scripts
@@ -1033,53 +1110,13 @@ class AssistantOptimized:
 
                 # 切换到新Tab
                 self.current_primary_tab = selected_tab
-                self.current_secondary_tab = list(self.tab_data[selected_tab].keys())[0]
+                self.current_secondary_tab = list(self.scripts_data[selected_tab].keys())[0]
 
                 # 更新二级Tab和数据
                 self.update_secondary_tabs()
-                self.load_current_tab_data()
+                self.load_current_scripts_data()
         except:
             pass
-
-    def update_secondary_tabs(self):
-        """更新二级Tab按钮"""
-        # 清空现有的二级Tab按钮
-        for widget in self.secondary_buttons_frame.winfo_children():
-            widget.destroy()
-        self.secondary_tab_buttons.clear()
-
-        # 添加当前一级Tab对应的二级Tab按钮
-        if self.current_primary_tab in self.tab_data:
-            row = 0
-            col = 0
-            max_cols = 4  # 每行最多4个按钮，让Tab显示更多文字
-
-            for tab_name in self.tab_data[self.current_primary_tab].keys():
-                # 创建按钮样式
-                is_current = (tab_name == self.current_secondary_tab)
-
-                btn = ttk.Button(
-                    self.secondary_buttons_frame,
-                    text=tab_name,
-                    command=lambda name=tab_name: self.select_secondary_tab(name),
-                    style='Selected.TButton' if is_current else 'TButton',
-                    takefocus=False  # 防止按钮获得焦点
-                )
-
-                btn.grid(row=row, column=col, padx=3, pady=3, sticky="ew")
-                btn.bind("<Button-3>", lambda e, name=tab_name: self.show_secondary_tab_context_menu(e, name))
-
-                self.secondary_tab_buttons[tab_name] = btn
-
-                col += 1
-                if col >= max_cols:
-                    col = 0
-                    row += 1
-
-            # 配置列权重以实现均匀分布
-            current_row_cols = col if col > 0 else max_cols
-            for i in range(max_cols):
-                self.secondary_buttons_frame.columnconfigure(i, weight=1)
 
     def select_secondary_tab(self, tab_name):
         """选择二级Tab"""
@@ -1089,7 +1126,7 @@ class AssistantOptimized:
 
             # 切换到新Tab
             self.current_secondary_tab = tab_name
-            self.load_current_tab_data()
+            self.load_current_scripts_data()
 
             # 更新按钮样式
             self.update_secondary_tab_styles()
@@ -1116,9 +1153,9 @@ class AssistantOptimized:
         finally:
             context_menu.grab_release()
 
-    def load_current_tab_data(self):
+    def load_current_scripts_data(self):
         """加载当前Tab的数据"""
-        self.current_scripts_data = self.get_current_tab_data()
+        self.current_scripts_data = self.get_current_scripts_data()
         self.filtered_scripts = self.current_scripts_data.copy()
         self.update_tree()
 
@@ -1154,12 +1191,12 @@ class AssistantOptimized:
         tab_name = utils.ask_string(self.root, "新增一级分类", "请输入分类名称:")
         if tab_name and tab_name.strip():
             tab_name = tab_name.strip()
-            if tab_name not in self.tab_data:
+            if tab_name not in self.scripts_data:
                 # 保存当前Tab数据
                 self.save_scripts()
 
                 # 添加到数据结构
-                self.tab_data[tab_name] = {"默认": {}}
+                self.scripts_data[tab_name] = {"默认": {}}
 
                 # 添加到界面
                 tab_frame = ttk.Frame(self.primary_notebook)
@@ -1175,7 +1212,7 @@ class AssistantOptimized:
 
                 # 更新界面
                 self.update_secondary_tabs()
-                self.load_current_tab_data()
+                self.load_current_scripts_data()
                 self.save_scripts()
                 self.status_var.set(f"已添加一级分类: {tab_name}")
             else:
@@ -1186,16 +1223,16 @@ class AssistantOptimized:
         tab_name = utils.ask_string(self.root, "新增二级分类", f"请输入分类名称（所属: {self.current_primary_tab}）:")
         if tab_name and tab_name.strip():
             tab_name = tab_name.strip()
-            if tab_name not in self.tab_data[self.current_primary_tab]:
+            if tab_name not in self.scripts_data[self.current_primary_tab]:
                 # 添加到数据结构
-                self.tab_data[self.current_primary_tab][tab_name] = {}
+                self.scripts_data[self.current_primary_tab][tab_name] = {}
 
                 # 切换到新Tab
                 self.current_secondary_tab = tab_name
 
                 # 重新更新二级Tab按钮
                 self.update_secondary_tabs()
-                self.load_current_tab_data()
+                self.load_current_scripts_data()
                 self.save_scripts()
                 self.status_var.set(f"已添加二级分类: {tab_name}")
             else:
@@ -1229,9 +1266,9 @@ class AssistantOptimized:
         new_name = utils.ask_string(self.root, "修改名称", "请输入新的分类名称:", old_name)
         if new_name and new_name.strip() and new_name != old_name:
             new_name = new_name.strip()
-            if new_name not in self.tab_data:
+            if new_name not in self.scripts_data:
                 # 更新数据结构
-                self.tab_data[new_name] = self.tab_data.pop(old_name)
+                self.scripts_data[new_name] = self.scripts_data.pop(old_name)
 
                 # 更新界面
                 self.primary_notebook.tab(tab_index, text=new_name)
@@ -1250,7 +1287,7 @@ class AssistantOptimized:
 
     def delete_primary_tab(self, tab_index, tab_name):
         """删除一级Tab"""
-        if len(self.tab_data) <= 1:
+        if len(self.scripts_data) <= 1:
             messagebox.showwarning("警告", "至少需要保留一个一级分类！")
             return
 
@@ -1258,8 +1295,8 @@ class AssistantOptimized:
                                icon='question', default='no'):
             try:
                 # 从数据结构中删除
-                if tab_name in self.tab_data:
-                    del self.tab_data[tab_name]
+                if tab_name in self.scripts_data:
+                    del self.scripts_data[tab_name]
                 if tab_name in self.primary_tabs:
                     del self.primary_tabs[tab_name]
 
@@ -1267,12 +1304,12 @@ class AssistantOptimized:
                 self.primary_notebook.forget(tab_index)
 
                 # 切换到第一个Tab
-                if self.tab_data:
-                    first_tab = list(self.tab_data.keys())[0]
+                if self.scripts_data:
+                    first_tab = list(self.scripts_data.keys())[0]
                     self.current_primary_tab = first_tab
-                    self.current_secondary_tab = list(self.tab_data[first_tab].keys())[0]
+                    self.current_secondary_tab = list(self.scripts_data[first_tab].keys())[0]
                     self.update_secondary_tabs()
-                    self.load_current_tab_data()
+                    self.load_current_scripts_data()
 
                 self.save_scripts()
                 self.status_var.set(f"已删除一级分类: {tab_name}")
@@ -1280,102 +1317,49 @@ class AssistantOptimized:
                 messagebox.showerror("错误", f"删除失败: {str(e)}")
                 self.status_var.set(f"❌ 删除失败: {str(e)}")
 
+    # ==================== 用户登录/登出 ====================
     def show_login_dialog(self):
         """显示登录对话框"""
         if self.is_logged_in:
             # 如果已登录，显示登出选项
-            if messagebox.askyesno("登出确认", f"当前用户: {self.current_user_id}\
-确定要登出吗？"):
+            if messagebox.askyesno("登出确认", f"当前用户: {self.current_user_id}确定要登出吗？"):
                 self.logout_user()
             return
 
-        # 创建登录对话框
-        login_dialog = tk.Toplevel(self.root)
-        login_dialog.title("用户登录")
-        login_dialog.geometry("350x220")
-        login_dialog.resizable(False, False)
-        login_dialog.transient(self.root)
-        login_dialog.grab_set()
+        # 显示登录对话框
+        result = show_login_dialog(self.root, self._handle_login)
+        
+    def _handle_login(self, username: str, password: str) -> bool:
+        """处理登录逻辑"""
+        try:
+            # 检查API管理器是否可用
+            if not self.api_manager:
+                messagebox.showerror("登录失败", "API服务不可用")
+                return False
 
-        # 居中显示
-        login_dialog.geometry("+%d+%d" % (
-            self.root.winfo_rootx() + 50,
-            self.root.winfo_rooty() + 50
-        ))
+            # 调用API登录
+            result = self.api_manager.login(username, password)
+            if result.get('success'):
+                self.current_user_id = result.get('user_id') or username
+                self.is_logged_in = True
 
-        # 创建界面 - 使用网格布局
-        main_frame = ttk.Frame(login_dialog, padding="25")
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        main_frame.columnconfigure(1, weight=1)
+                # 同步云端数据
+                self.sync_cloud_data()
 
-        # 用户名
-        ttk.Label(main_frame, text="用户名:", font=("微软雅黑", 10)).grid(row=0, column=0, sticky="w", pady=(0, 8))
-        username_var = tk.StringVar()
-        username_entry = ttk.Entry(main_frame, textvariable=username_var, font=("微软雅黑", 10), width=25)
-        username_entry.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 15))
-        username_entry.focus()
+                # 保存配置
+                self.save_config()
 
-        # 密码
-        ttk.Label(main_frame, text="密码:", font=("微软雅黑", 10)).grid(row=2, column=0, sticky="w", pady=(0, 8))
-        password_var = tk.StringVar()
-        password_entry = ttk.Entry(main_frame, textvariable=password_var, show="*", font=("微软雅黑", 10), width=25)
-        password_entry.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(0, 25))
+                # 更新界面
+                self.update_login_status()
 
-        # 按钮框架
-        button_frame = ttk.Frame(main_frame)
-        button_frame.grid(row=4, column=0, columnspan=2, sticky="ew")
-        button_frame.columnconfigure(0, weight=1)
-        button_frame.columnconfigure(1, weight=1)
-
-        def do_login():
-            username = username_var.get().strip()
-            password = password_var.get().strip()
-
-            if not username or not password:
-                messagebox.showwarning("警告", "请输入用户名和密码！")
-                return
-
-            try:
-                # 检查API管理器是否可用
-                if not self.api_manager:
-                    messagebox.showerror("登录失败", "API服务不可用")
-                    return
-
-                # 调用API登录
-                result = self.api_manager.login(username, password)
-                if result.get('success'):
-                    self.current_user_id = result.get('user_id') or username
-                    self.is_logged_in = True
-
-                    # 同步云端数据
-                    self.sync_cloud_data()
-
-                    # 保存配置
-                    self.save_config()
-
-                    # 更新界面
-                    self.update_login_status()
-
-                    login_dialog.destroy()
-                    messagebox.showinfo("登录成功", f"欢迎回来，{username}！")
-                else:
-                    messagebox.showerror("登录失败", result.get('message', '用户名或密码错误'))
-            except Exception as e:
-                messagebox.showerror("登录失败", f"登录时发生错误: {str(e)}")
-
-        def do_cancel():
-            login_dialog.destroy()
-
-        # 使用网格布局放置按钮，确保完整显示
-        cancel_btn = ttk.Button(button_frame, text="取消", command=do_cancel, width=10)
-        cancel_btn.grid(row=0, column=0, padx=(0, 10), sticky="e")
-
-        login_btn = ttk.Button(button_frame, text="登录", command=do_login, width=10)
-        login_btn.grid(row=0, column=1, sticky="e")
-
-        # 绑定回车键
-        login_dialog.bind('<Return>', lambda e: do_login())
-        login_dialog.bind('<Escape>', lambda e: do_cancel())
+                messagebox.showinfo("登录成功", f"欢迎回来，{username}！")
+                return True
+            else:
+                messagebox.showerror("登录失败", result.get('message', '用户名或密码错误'))
+                return False
+        except Exception as e:
+            messagebox.showerror("登录失败", f"登录时发生错误: {str(e)}")
+            return False
 
     def logout_user(self):
         """用户登出"""
@@ -1391,15 +1375,11 @@ class AssistantOptimized:
                 api_manager=self.api_manager,
                 script_file=self.script_file,
                 config_file=self.config_file,
-                user_id="default"
+                user_id=0
             )
 
-            # 重新加载数据
-            self.load_data_from_adapter()
-
-            # 更新界面
-            self.update_secondary_tabs()
-            self.update_tree()
+            # 重新渲染页面数据
+            self.refresh_all_ui()
             self.update_login_status()
 
             # 保存配置
@@ -1415,7 +1395,7 @@ class AssistantOptimized:
             self.login_btn.configure(text=f"用户:{self.current_user_id[:6]}...")
         else:
             self.login_btn.configure(text="登录")
-
+    # ==================== 数据更新 ====================
     def upload_data_to_cloud(self):
         """手动上传数据到云端"""
         try:
@@ -1444,16 +1424,16 @@ class AssistantOptimized:
             # }
 
             # 上传到云端
-            success = self.data_adapter.push_local_scripts_data(self.tab_data)
+            success = self.data_adapter.push_local_scripts_data(data=self.scripts_data)
             if success:
-                messagebox.showinfo("上传成功", "数据已成功上传到云端！")
+                messagebox.showinfo("上传成功", "数据已成功上传到云端！")  # type: ignore
                 self.status_var.set("数据上传成功")
             else:
-                messagebox.showerror("上传失败", "数据上传失败，请稍后重试")
+                messagebox.showerror("上传失败", "数据上传失败，请稍后重试")  # type: ignore
                 self.status_var.set("数据上传失败")
 
         except Exception as e:
-            messagebox.showerror("上传失败", f"上传时发生错误: {str(e)}")
+            messagebox.showerror("上传失败", f"上传时发生错误: {str(e)}")  # type: ignore
             self.status_var.set(f"上传失败: {str(e)}")
 
     def download_data_from_cloud(self):
@@ -1472,17 +1452,16 @@ class AssistantOptimized:
 这将覆盖本地的现有数据。"):
                 return
 
-            # 启用API功能
-            self.data_adapter.api_manager = self.api_manager
-            self.data_adapter.user_id = self.current_user_id
+            # # 启用API功能
+            # self.data_adapter.api_manager = self.api_manager
+            # self.data_adapter.user_id = self.current_user_id
 
             # 从云端下载数据
             success = self.data_adapter.load_user_data()
             if success:
-                # 重新加载数据到界面
-                self.load_data_from_adapter()
-                self.update_secondary_tabs()
-                self.update_tree()
+                # 刷新所有界面元素
+                self.refresh_all_ui()
+
                 messagebox.showinfo("下载成功", "数据已成功从云端下载！")
                 self.status_var.set("数据下载成功")
             else:
@@ -1507,10 +1486,9 @@ class AssistantOptimized:
                 # 刷新云端数据
                 success = self.data_adapter.load_user_data()
                 if success:
-                    # 重新加载数据到界面
-                    self.load_data_from_adapter()
-                    self.update_secondary_tabs()
-                    self.update_tree()
+                    # 刷新所有界面元素
+                    self.refresh_all_ui()
+
                     self.status_var.set("云端数据同步成功")
                     return True
                 else:
@@ -1539,10 +1517,8 @@ class AssistantOptimized:
             try:
                 success = self.data_adapter.import_data_from_file(file_path)
                 if success:
-                    # 重新加载数据
-                    self.load_data_from_adapter()
-                    self.update_secondary_tabs()
-                    self.update_tree()
+                    # 刷新所有界面元素
+                    self.refresh_all_ui()
                     messagebox.showinfo("导入成功", "数据导入成功！")
                 else:
                     messagebox.showerror("导入失败", "数据导入失败，请检查文件格式！")

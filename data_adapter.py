@@ -1,11 +1,8 @@
 import json
 import os
-import re
-from typing import Dict, List, Optional, Any
+from typing import Dict, Optional, Any
 import threading
-from urllib3 import request
 from api_manager import APIManager
-import datetime
 import utils
 
 json_file_lock = threading.Lock()
@@ -14,8 +11,8 @@ json_file_lock = threading.Lock()
 class DataAdapter:
     """数据适配器 - 用户登录后获取云端数据，获取不到则使用默认数据"""
 
-    def __init__(self, api_manager: Optional[APIManager] = APIManager,
-                 script_file: str = "scripts.json", config_file: str = "config.json", user_id: str = "default"):
+    def __init__(self, api_manager: Optional[APIManager] = None,
+                 script_file: str = "scripts.json", config_file: str = "config.json", user_id: int = 0):
         self.api_manager = api_manager
         self.scripts_file = script_file
         self.config_file = config_file
@@ -28,20 +25,76 @@ class DataAdapter:
         self.config_data = {}
 
         # 初始化数据
+        self.init_data()
+
+    def init_data(self):
+        """初始化数据"""
         self.load_user_data()
 
+    # ==================== 核心数据本地操作 ====================
+    def get_local_scripts_data(self)-> Dict[str, Any]: 
+        """读取本地话术数据"""
+        if os.path.exists(self.scripts_file):
+            with open(self.scripts_file, 'r', encoding='utf-8') as f:
+                self.scripts_data = json.load(f)
+        else:
+            self.scripts_data = utils.init_scripts_data()
+        
+        return self.scripts_data
+    
+    def get_local_config_data(self) -> Dict[str, Any]:
+        """读取本地配置数据"""
+        if os.path.exists(self.config_file):
+            with open(self.config_file, 'r', encoding='utf-8') as f:
+                self.config_data = json.load(f)
+        else:
+            self.config_data = utils.init_config_data()
+        
+        return self.config_data
+
+    def get_local_data(self):
+        self.get_local_scripts_data()
+        self.get_local_config_data()
+
+    def save_local_scripts_data(self) -> bool:
+        """将话术保存到本地json文件"""
+        try:
+            # 用户数据保存到本地文件
+            with json_file_lock:
+                with open(self.scripts_file, 'w', encoding='utf-8') as f:
+                    json.dump(self.scripts_data, f, ensure_ascii=False, indent=2)
+            return True
+        except Exception as e:
+            print(f"保存本地数据失败: {e}")
+            return False
+
+    def save_local_config_data(self, config)-> bool:
+        """将配置保存到本地json文件"""
+        try:
+            self.config_data = config
+            # 本地配置保存到本地文件
+            with json_file_lock:
+                with open(self.config_file, 'w', encoding='utf-8') as f:
+                    json.dump(self.config_data, f, ensure_ascii=False, indent=2)
+
+            return True
+        except Exception as e:
+            print(f"保存本地数据失败: {e}")
+            return False
+
+    # ==================== 核心数据云端操作操作 ====================
     def load_user_data(self):
         """加载用户数据：优先云端，获取不到则使用默认数据"""
         # 如果有API管理器，尝试获取云端数据
         if self.api_manager:
             try:
                 response = self.api_manager.get_user_data(self.user_id)
-                if response.code == 200:
-                    self.scripts_data = response.scripts_data
-                    self.config_data = response.script_data
+                if response.get('code') == 200:
+                    self.scripts_data = response.get('scripts_data', {})
+                    self.config_data = response.get('config_data', {})
                     print(f"已加载用户 {self.user_id} 的云端数据")
                     with json_file_lock:  # 自动管理锁的获取/释放
-                        with open(self.script_file, 'w', encoding='utf-8') as f:
+                        with open(self.scripts_file, 'w', encoding='utf-8') as f:
                             json.dump(self.scripts_data, f, ensure_ascii=False, indent=2)
 
                         with open(self.config_file, 'w', encoding='utf-8') as f:
@@ -51,40 +104,24 @@ class DataAdapter:
                     print(f"云端无用户 {self.user_id} 的数据，使用默认数据")
                     return False
             except Exception as e:
-                print(f"获取云端数据失败，使用默认数据: {e}")
+                print(f"获取云端数据失败，使用本地数据: {e}")
+                self.get_local_data()
                 return False
         else:
             # 获取不到云端数据，使用本地数据
-            self.init_default_data()
+            self.get_local_data()
             print(f"已为用户 {self.user_id} 初始化默认数据")
 
-    def init_default_data(self):
-        """读取本地数据"""
-        if os.path.exists(self.scripts_file):
-            with open(self.scripts_file, 'r', encoding='utf-8') as f:
-                self.scripts_data = json.load(f)
-        else:
-            self.scripts_data = utils.init_scripts_data()
-
-        if os.path.exists(self.config_file):
-            with open(self.config_file, 'r', encoding='utf-8') as f:
-                self.config_data = json.load(f)
-        else:
-            self.config_data = utils.init_config_data()
-
-    def push_local_scripts_data(self, data) -> bool:
+    def push_local_scripts_data(self, data: Dict[str, Any] = None) -> bool:
         """话术数据上传到云端"""
-        # if data:
-        #     self.scripts_data.update(data)
-
-        # 更新时间戳
-        # self.scripts_data["last_updated"] = datetime.datetime.now().isoformat()
+        if data:
+            self.scripts_data = data
 
         # 保存到云端
         if self.api_manager:
             try:
                 response = self.api_manager.save_user_data(self.scripts_data, self.user_id)
-                if response.code == 200:
+                if response.get('code') == 200:
                     print(f"数据已保存到云端 (用户: {self.user_id})")
                     return True
                 else:
@@ -99,17 +136,14 @@ class DataAdapter:
 
     def push_local_config_data(self, data: Dict[str, Any] = None) -> bool:
         """配置数据上传到云端"""
-        # if data:
-        #     self.config_data.update(config)
-
-        # 更新时间戳
-        # self.scripts_data["last_updated"] = datetime.datetime.now().isoformat()
+        if data:
+            self.config_data = data
 
         # 保存到云端
         if self.api_manager:
             try:
                 response = self.api_manager.save_user_data(self.config_data, self.user_id)
-                if response.code == 200:
+                if response.get('code') == 200:
                     print(f"配置数据已保存到云端 (用户: {self.user_id})")
                     return True
                 else:
@@ -122,38 +156,15 @@ class DataAdapter:
             print("未配置API管理器，无法保存到云端")
             return False
 
-    def save_local_user_data(self):
-        """保存本地数据"""
-        try:
-            # 用户数据保存到本地文件
-            with json_file_lock:
-                with open(self.scripts_file, 'w', encoding='utf-8') as f:
-                    json.dump(self.scripts_data, f, ensure_ascii=False, indent=2)
-
-        except Exception as e:
-            print(f"保存本地数据失败: {e}")
-
-    def save_local_config_data(self, config):
-        """保存本地数据"""
-        try:
-            self.config_data = config
-            # 本地配置保存到本地文件
-            with json_file_lock:
-                with open(self.config_file, 'w', encoding='utf-8') as f:
-                    json.dump(self.config_data, f, ensure_ascii=False, indent=2)
-
-        except Exception as e:
-            print(f"保存本地数据失败: {e}")
-
-    # ==================== 核心数据操作 ====================
+    # ==================== 获取核心数据操作 ====================
 
     def get_scripts_data(self) -> Dict[str, Any]:
         """获取话术数据"""
-        return self.scripts_data
+        return self.get_local_scripts_data()
 
     def get_config_data(self) -> Dict[str, Any]:
         """获取配置数据"""
-        return self.config_data.copy()
+        return self.get_local_config_data()
 
     # ==================== 数据导入导出 ====================
 
@@ -168,7 +179,7 @@ class DataAdapter:
                 self.scripts_data["scripts_data"] = data
 
             # 保存到云端
-            success = self.save_full_data()
+            success = self.push_local_scripts_data()
             if success:
                 print(f"数据导入成功，已保存到云端")
             else:

@@ -8,7 +8,7 @@ class APIManager:
     def __init__(self, base_url: str = "http://localhost:8000/api"):
         self.base_url = base_url
         self.session = requests.Session()
-        self.user_id = None  # 为登录功能预留
+        self.user_id = 0  # 为登录功能预留
         
         # 设置默认headers
         self.session.headers.update({
@@ -16,7 +16,7 @@ class APIManager:
             'Accept': 'application/json'
         })
     
-    def set_user_auth(self, user_id: str, token: Optional[str] = None):
+    def set_user_auth(self, user_id: int, token: Optional[str] = None):
         """设置用户认证信息（为登录功能预留）"""
         self.user_id = user_id
         if token:
@@ -46,7 +46,7 @@ class APIManager:
     
     # ==================== 核心数据操作（粗粒度） ====================
     
-    def get_user_data(self, user_id: str = None) -> Dict[str, Any]:
+    def get_user_data(self, user_id: int = 0) -> Dict[str, Any]:
         """获取用户完整数据
         
         返回格式:
@@ -69,17 +69,17 @@ class APIManager:
             "last_updated": "2024-01-01T12:00:00Z"
         }
         """
-        uid = user_id or self.user_id or "default"
+        uid = user_id or self.user_id
         result = self._make_request('GET', f'/user/{uid}/data')
         return result
     
-    def save_user_data(self, data: Dict[str, Any], user_id: str = None) -> Dict[str, Any]:
+    def save_user_data(self, data: Dict[str, Any], user_id: int = 0) -> Dict[str, Any]:
         """保存用户完整数据
         
         参数:
         data: 完整的用户数据结构
         """
-        uid = user_id or self.user_id or "default"
+        uid = user_id or self.user_id
         request_data = {
             'user_id': uid,
             'data': data
@@ -110,14 +110,14 @@ class APIManager:
         """用户登出"""
         result = self._make_request('POST', '/auth/logout')
         if result.get('success'):
-            self.user_id = None
+            self.user_id = 0
             if 'Authorization' in self.session.headers:
                 del self.session.headers['Authorization']
         return result
     
     # ==================== 文件导入导出（格式转换） ====================
     
-    def upload_and_convert_file(self, file_path: str, user_id: str = None) -> Optional[Dict[str, Any]]:
+    def upload_and_convert_file(self, file_path: str, user_id: int = 0) -> Optional[Dict[str, Any]]:
         """上传文件并转换为JSON格式
         
         支持的文件格式：
@@ -127,7 +127,7 @@ class APIManager:
         
         返回转换后的JSON数据结构
         """
-        uid = user_id or self.user_id or "default"
+        uid = user_id or self.user_id
         
         try:
             # 使用multipart/form-data上传文件
@@ -164,7 +164,7 @@ class APIManager:
             return None
     
     def export_and_convert_data(self, data: Dict[str, Any], file_path: str, 
-                               file_format: str = "json", user_id: str = None) -> bool:
+                               file_format: str = "json", user_id: int = 0) -> bool:
         """导出数据并转换为指定格式
         
         支持的导出格式：
@@ -177,7 +177,7 @@ class APIManager:
         file_path: 导出文件路径
         file_format: 导出格式 (json/excel/csv)
         """
-        uid = user_id or self.user_id or "default"
+        uid = user_id or self.user_id
         
         try:
             request_data = {

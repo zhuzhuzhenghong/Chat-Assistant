@@ -177,8 +177,8 @@ class AssistantMainWindow(QMainWindow):
         # 加载数据
         self.load_initial_data()
         
-        # 确保背景渐变生效（在所有初始化完成后）
-        QTimer.singleShot(100, self.apply_background_gradient)
+        # # 确保背景渐变生效（在所有初始化完成后）
+        # QTimer.singleShot(100, self.apply_background_gradient)
         
     def init_data(self):
         """初始化数据变量"""
@@ -220,40 +220,40 @@ class AssistantMainWindow(QMainWindow):
     def setup_window(self):
         """设置窗口属性"""
         self.setWindowTitle("聚雍宝")
-        self.setMinimumSize(400, 700)
-        self.resize(420, 750)
+        self.setMinimumSize(300, 700)
+        self.resize(350, 750)
         
         # 设置窗口图标（如果有的话）
         # self.setWindowIcon(QIcon("styles/icons/app_icon.png"))
         
-        # 直接设置主窗口背景渐变
-        self.setStyleSheet("""
-            QMainWindow {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                            stop:0 #a1c4fd, stop:1 #c2e9ff);
-                border-radius: 12px;
-            }
-        """)
+        # # 直接设置主窗口背景渐变
+        # self.setStyleSheet("""
+        #     QMainWindow {
+        #         background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        #                     stop:0 #a1c4fd, stop:1 #c2e9ff);
+        #         border-radius: 12px;
+        #     }
+        # """)
         
         # 设置窗口置顶
         if self.always_on_top:
             self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
     
-    def apply_background_gradient(self):
-        """应用背景渐变（确保在所有样式加载后执行）"""
-        gradient_style = """
-            QMainWindow {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                            stop:0 #a1c4fd, stop:1 #c2e9ff);
-                border-radius: 12px;
-            }
-            QWidget#main_frame {
-                background: transparent;
-                border: none;
-            }
-        """
-        self.setStyleSheet(gradient_style)
-        print("✅ 背景渐变已应用")
+    # def apply_background_gradient(self):
+    #     """应用背景渐变（确保在所有样式加载后执行）"""
+    #     gradient_style = """
+    #         QMainWindow {
+    #             background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+    #                         stop:0 #a1c4fd, stop:1 #c2e9ff);
+    #             border-radius: 12px;
+    #         }
+    #         QWidget#main_frame {
+    #             background: transparent;
+    #             border: none;
+    #         }
+    #     """
+    #     self.setStyleSheet(gradient_style)
+    #     print("✅ 背景渐变已应用")
     
     def create_ui(self):
         """创建用户界面"""
@@ -272,8 +272,8 @@ class AssistantMainWindow(QMainWindow):
         
         # 主布局
         main_layout = QVBoxLayout(central_widget)
-        main_layout.setContentsMargins(16, 12, 16, 16)  # 减少顶部边距
-        main_layout.setSpacing(4)  # 组件之间的间距
+        main_layout.setContentsMargins(0, 0, 0, 0)  # 减少顶部边距
+        main_layout.setSpacing(2)  # 组件之间的间距
         
         # 创建各个部分
         self.create_target_section(main_layout)
@@ -294,7 +294,7 @@ class AssistantMainWindow(QMainWindow):
         parent_layout.addWidget(target_group)
         
         target_layout = QHBoxLayout(target_group)
-        target_layout.setContentsMargins(12, 4, 12, 12)
+        target_layout.setContentsMargins(0, 0, 0, 0)
         
         # 目标标签
         self.target_label = QLabel("目标: 无")
@@ -324,7 +324,7 @@ class AssistantMainWindow(QMainWindow):
         parent_layout.addWidget(primary_group)
         
         primary_layout = QHBoxLayout(primary_group)
-        primary_layout.setContentsMargins(12, 0, 12, 0)  # 减少底部边距
+        primary_layout.setContentsMargins(0, 0, 0, 0)  # 减少底部边距
         
         # Tab容器
         self.primary_tab_widget = QTabWidget()
@@ -385,7 +385,7 @@ class AssistantMainWindow(QMainWindow):
         parent_layout.addWidget(tree_group, 1)  # 设置拉伸因子
         
         tree_layout = QVBoxLayout(tree_group)
-        tree_layout.setContentsMargins(12, 4, 12, 12)  # 大幅减少上边距
+        tree_layout.setContentsMargins(4, 4, 4, 4)  # 大幅减少上边距
         
         # 树形控件
         self.tree_widget = ModernTreeWidget()
@@ -402,7 +402,7 @@ class AssistantMainWindow(QMainWindow):
         parent_layout.addWidget(search_group)
         
         search_layout = QHBoxLayout(search_group)
-        search_layout.setContentsMargins(8, 8, 8, 8)
+        search_layout.setContentsMargins(2, 4, 2, 4)
         
         # 搜索框
         self.search_edit = SearchLineEdit("搜索话术...")  # 缩短placeholder文字
@@ -555,11 +555,11 @@ class AssistantMainWindow(QMainWindow):
                 tab_widget = QWidget()
                 self.primary_tabs[tab_name] = tab_widget
                 self.primary_tab_widget.addTab(tab_widget, tab_name)
-            
-            # 添加"+"按钮作为最后一个Tab
-            add_tab_widget = QWidget()
-            self.primary_tab_widget.addTab(add_tab_widget, "+")
-            
+        #
+        #     # 添加"+"按钮作为最后一个Tab
+        #     add_tab_widget = QWidget()
+        #     self.primary_tab_widget.addTab(add_tab_widget, "+")
+        #
             # 选中当前Tab
             tab_names = list(self.scripts_data.keys())
             if self.current_primary_tab in tab_names:

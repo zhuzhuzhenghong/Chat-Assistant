@@ -166,7 +166,9 @@ QPushButton#tab_button_selected {
                 stop:0 #6bb6ff, stop:1 #4a90d9);
     color: white;
     border: none;
-    font-weight: 600;
+    font-weight: 500;
+    padding:0px;
+    margin: 0px;
 }
 
 /* Tab按钮（未选中状态） */
@@ -174,9 +176,19 @@ QPushButton#tab_button {
     background-color: rgba(255, 255, 255, 0.8);
     color: #2d5aa0;
     border: none;
+    font-weight: 500;
+    padding:0px;
+    margin: 0px;
 }
 
-/* 移除Tab按钮hover效果 */
+QPushButton#tab_button:hover {
+    background-color: rgba(255, 255, 255, 0.95);
+    border-color: rgba(161, 196, 253, 0.6);
+}
+
+QPushButton#tab_button:pressed {
+    background-color: rgba(194, 233, 255, 0.3);
+}
 
 /* 输入框 */
 QLineEdit {
@@ -191,7 +203,7 @@ QLineEdit {
 
 QLineEdit:focus {
     background-color: #ffffff;
-    border: 2px solid #5b9bd5;
+    border: none;
 }
 
 QLineEdit:disabled {
@@ -350,9 +362,11 @@ QTabWidget::pane {
     border-left: none;
     border-right: none;
     border-bottom: none;
+    border-top: none;
     background-color: transparent;
-    padding: 2px;
-    margin-top: 0px;
+    padding: 0px;
+    margin: 0px;
+    height: 0px;
 }
 
 QTabWidget::tab-bar {
@@ -368,7 +382,7 @@ QTabBar::tab {
     background-color: rgba(255, 255, 255, 0.8);
     color: #2d5aa0;
     border: none;
-    padding: 4px 8px;
+    padding: 4px 4px;
     margin-right: 2px;
     margin-bottom: 0px;
     font-weight: 500;
@@ -379,7 +393,7 @@ QTabBar::tab:selected {
                 stop:0 #6bb6ff, stop:1 #4a90d9);
     color: white;
     border: none;
-    font-weight: 600;
+    font-weight: 500;
 }
 
 /* 移除TabBar hover效果 */
@@ -388,7 +402,7 @@ QTabBar::tab:selected {
 QMenu {
     background-color: #ffffff;
     border: 1px solid #e2e8f0;
-    padding: 3px;
+    padding: 4px;
     font-size: 9pt;
 }
 

@@ -2,6 +2,7 @@
 聚雍宝 - PySide6版本
 智能客服助手 - 现代化界面版本
 """
+from symbol import compound_stmt
 import sys
 import os
 import json
@@ -16,7 +17,8 @@ from PySide6.QtWidgets import (
     QGridLayout, QLabel, QPushButton, QLineEdit, QTextEdit, QTreeWidget, 
     QTreeWidgetItem, QGroupBox, QCheckBox, QComboBox, QFrame, QSplitter,
     QScrollArea, QTabWidget, QStatusBar, QMenuBar, QMenu, QMessageBox,
-    QDialog, QDialogButtonBox, QProgressBar, QSpacerItem, QSizePolicy
+    QDialog, QDialogButtonBox, QProgressBar, QSpacerItem, QSizePolicy,
+    QLayout
 )
 from PySide6.QtCore import (
     Qt, QTimer, QThread, QObject, Signal, QSize, QPropertyAnimation, 
@@ -36,18 +38,100 @@ from api_manager import APIManager
 from data_adapter import DataAdapter
 import utils
 
-# 导入样式和主题管理器
-from styles.style_manager import style_manager
+# 导入主题管理器
 from styles.theme_manager import theme_manager
 
 # 导入窗口吸附管理器
-from window_dock_manager import WindowDockManager
+from components.window_dock_manager import WindowDockManager
 
 # 导入自定义标题栏
 from components.custom_title_bar import CustomTitleBar
 
 # 导入添加弹窗
 from components.add_dialog import AddDialog
+
+"""流式布局类"""
+class FlowLayout(QLayout):
+    """自动换行的流式布局"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._item_list = []
+        self._spacing = -1
+        
+    def __del__(self):
+        item = self.takeAt(0)
+        while item:
+            item = self.takeAt(0)
+            
+    def addItem(self, item):
+        self._item_list.append(item)
+        
+    def count(self):
+        return len(self._item_list)
+        
+    def itemAt(self, index):
+        if 0 <= index < len(self._item_list):
+            return self._item_list[index]
+        return None
+        
+    def takeAt(self, index):
+        if 0 <= index < len(self._item_list):
+            return self._item_list.pop(index)
+        return None
+        
+    def expandingDirections(self):
+        return Qt.Orientation(0)
+        
+    def hasHeightForWidth(self):
+        return True
+        
+    def heightForWidth(self, width):
+        height = self._do_layout(QRect(0, 0, width, 0), True)
+        return height
+        
+    def setGeometry(self, rect):
+        super().setGeometry(rect)
+        self._do_layout(rect, False)
+        
+    def sizeHint(self):
+        return self.minimumSize()
+        
+    def minimumSize(self):
+        size = QSize()
+        for item in self._item_list:
+            size = size.expandedTo(item.minimumSize())
+        size += QSize(2 * self.contentsMargins().left(), 2 * self.contentsMargins().top())
+        return size
+        
+    def _do_layout(self, rect, test_only):
+        x = rect.x()
+        y = rect.y()
+        line_height = 0
+        spacing = self.spacing()
+        
+        for item in self._item_list:
+            widget = item.widget()
+            if widget.isHidden():
+                continue
+                
+            space_x = spacing
+            space_y = spacing
+            
+            next_x = x + item.sizeHint().width() + space_x
+            if next_x - space_x > rect.right() and line_height > 0:
+                x = rect.x()
+                y = y + line_height + space_y
+                next_x = x + item.sizeHint().width() + space_x
+                line_height = 0
+                
+            if not test_only:
+                item.setGeometry(QRect(QPoint(x, y), item.sizeHint()))
+                
+            x = next_x
+            line_height = max(line_height, item.sizeHint().height())
+            
+        return y + line_height - rect.y()
 
 """窗口监控线程"""
 class WindowMonitor(QThread):
@@ -244,6 +328,8 @@ class AssistantMainWindow(QMainWindow):
         # UI组件引用
         self.primary_tabs = {}
         self.secondary_tab_buttons = {}
+        self.secondary_buttons_widget = None
+        self.secondary_buttons_layout = None
         
         # 吸附功能配置
         self.dock_enabled = False
@@ -261,34 +347,9 @@ class AssistantMainWindow(QMainWindow):
         # 设置窗口图标（如果有的话）
         # self.setWindowIcon(QIcon("styles/icons/app_icon.png"))
         
-        # # 直接设置主窗口背景渐变
-        # self.setStyleSheet("""
-        #     QMainWindow {
-        #         background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-        #                     stop:0 #a1c4fd, stop:1 #c2e9ff);
-        #         border-radius: 12px;
-        #     }
-        # """)
-        
         # 设置窗口置顶
         if self.always_on_top:
             self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
-    
-    # def apply_background_gradient(self):
-    #     """应用背景渐变（确保在所有样式加载后执行）"""
-    #     gradient_style = """
-    #         QMainWindow {
-    #             background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-    #                         stop:0 #a1c4fd, stop:1 #c2e9ff);
-    #             border-radius: 12px;
-    #         }
-    #         QWidget#main_frame {
-    #             background: transparent;
-    #             border: none;
-    #         }
-    #     """
-    #     self.setStyleSheet(gradient_style)
-    #     print("✅ 背景渐变已应用")
     
     def create_ui(self):
         """创建用户界面"""
@@ -325,50 +386,10 @@ class AssistantMainWindow(QMainWindow):
         # self.create_target_section(main_layout)
         self.create_primary_tabs_section(main_layout)
         self.create_secondary_tabs_section(main_layout)
-        self.create_action_buttons_section(main_layout)
+        # self.create_action_buttons_section(main_layout)
         self.create_tree_section(main_layout)
         self.create_search_section(main_layout)
         self.create_status_section(main_layout)
-        
-        # 菜单栏功能已整合到设置按钮中
-        
-    # def create_target_section(self, parent_layout):
-    #     """创建目标窗口部分"""
-    #     # target_group = QGroupBox("当前目标")
-    #     target_group = QWidget()
-
-    #     parent_layout.addWidget(target_group)
-        
-    #     target_layout = QHBoxLayout(target_group)
-    #     target_layout.setContentsMargins(0, 0, 0, 0)
-        
-    #     # 目标标签
-    #     self.target_label = QLabel("目标: 无")
-    #     self.target_label.setObjectName("target_label")
-    #     target_layout.addWidget(self.target_label, 1)
-        
-    #     # 控制按钮组
-    #     controls_layout = QHBoxLayout()
-        
-    #     # 置顶复选框
-    #     self.topmost_checkbox = QCheckBox("置顶")
-    #     self.topmost_checkbox.setChecked(self.always_on_top)
-    #     self.topmost_checkbox.toggled.connect(self.on_topmost_changed)
-    #     controls_layout.addWidget(self.topmost_checkbox)
-        
-    #     # 锁定复选框
-    #     self.lock_checkbox = QCheckBox("锁定")
-    #     self.lock_checkbox.setChecked(self.is_locked)
-    #     self.lock_checkbox.toggled.connect(self.on_lock_changed)
-    #     controls_layout.addWidget(self.lock_checkbox)
-        
-    #     # 吸附复选框
-    #     self.dock_checkbox = QCheckBox("吸附")
-    #     self.dock_checkbox.setChecked(self.dock_enabled)
-    #     self.dock_checkbox.toggled.connect(self.on_dock_changed)
-    #     controls_layout.addWidget(self.dock_checkbox)
-        
-        # target_layout.addLayout(controls_layout)
         
     def create_primary_tabs_section(self, parent_layout):
         """创建一级Tab部分"""
@@ -394,27 +415,24 @@ class AssistantMainWindow(QMainWindow):
         primary_layout.addWidget(self.primary_tab_widget, 1)
         
     def create_secondary_tabs_section(self, parent_layout):
-        """创建二级Tab部分"""
+        """创建二级Tab部分（按钮形式）"""
         secondary_group = QWidget()
         parent_layout.addWidget(secondary_group)
         
-        secondary_layout = QHBoxLayout(secondary_group)
-        secondary_layout.setContentsMargins(0, 0, 0, 0)  # 与一级菜单保持一致
+        secondary_layout: QVBoxLayout = QVBoxLayout(secondary_group)
+        secondary_layout.setContentsMargins(0, 0, 0, 0)
+        secondary_layout.setSpacing(0)
         
-        # Tab容器
-        self.secondary_tab_widget = QTabWidget()
-        self.secondary_tab_widget.setTabPosition(QTabWidget.TabPosition.North)
-        self.secondary_tab_widget.currentChanged.connect(self.on_secondary_tab_changed)
+        # 创建按钮容器
+        self.secondary_buttons_widget = QWidget()
+        self.secondary_buttons_widget.setMinimumHeight(40)
         
-        # 为Tab栏设置右键菜单
-        try:
-            self.secondary_tab_widget.tabBar().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-            self.secondary_tab_widget.tabBar().customContextMenuRequested.connect(self.show_secondary_tab_context_menu)
-            print("二级Tab右键菜单设置成功")  # 调试信息
-        except Exception as e:
-            print(f"设置二级Tab右键菜单失败: {e}")
+        # 存储按钮的字典和布局信息
+        self.secondary_tab_buttons = {}
+        self.button_rows = []  # 存储每行的按钮
         
-        secondary_layout.addWidget(self.secondary_tab_widget, 1)
+        # 直接添加按钮容器到布局
+        secondary_layout.addWidget(self.secondary_buttons_widget)
         
     def create_action_buttons_section(self, parent_layout):
         """创建操作按钮部分"""
@@ -424,23 +442,18 @@ class AssistantMainWindow(QMainWindow):
         action_layout.setContentsMargins(0, 0, 0, 0)  # 减少下边距
         parent_layout.addWidget(action_widget)
         
-        # 添加内容按钮
-        add_content_btn = ModernButton("➕ 添加内容", "primary")
-        add_content_btn.clicked.connect(self.show_add_dialog)
-        action_layout.addWidget(add_content_btn)
-        
-        # 去掉"添加话术标题"按钮，因为添加内容功能已经包含了这个功能
-        # add_category_btn = ModernButton("添加话术标题", "secondary")
-        # add_category_btn.clicked.connect(self.add_category)
-        # action_layout.addWidget(add_category_btn)
+        # # 添加内容按钮
+        # add_content_btn = ModernButton("➕ 添加内容", "primary")
+        # add_content_btn.clicked.connect(self.show_add_dialog)
+        # action_layout.addWidget(add_content_btn)
         
         action_layout.addStretch()
         
         # 提示标签
-        self.tip_label = QLabel()
-        self.tip_label.setObjectName("tip_label")
-        self.update_tip_text()
-        action_layout.addWidget(self.tip_label)
+        # self.tip_label = QLabel()
+        # self.tip_label.setObjectName("tip_label")
+        # self.update_tip_text()
+        # action_layout.addWidget(self.tip_label)
         
     def create_tree_section(self, parent_layout):
         """创建树形列表部分"""
@@ -471,12 +484,6 @@ class AssistantMainWindow(QMainWindow):
         self.search_edit = SearchLineEdit("搜索话术...")  # 缩短placeholder文字
         self.search_edit.textChanged.connect(self.on_search_changed)
         search_layout.addWidget(self.search_edit, 1)
-        
-        # 清空按钮
-        # clear_btn = ModernButton("清空", "small")
-        # clear_btn.clicked.connect(self.clear_search)
-        # clear_btn.setMaximumSize(50, 24)  # 限制按钮大小
-        # search_layout.addWidget(clear_btn)
         
     def create_status_section(self, parent_layout):
         """创建状态栏部分"""
@@ -573,6 +580,9 @@ class AssistantMainWindow(QMainWindow):
                 self.title_bar.set_lock_state(self.position_locked)
                 self.title_bar.set_topmost_state(self.always_on_top)
             
+            # 延迟更新按钮布局，确保界面完全渲染
+            QTimer.singleShot(100, self.update_secondary_tabs)
+            
         except Exception as e:
             print(f"加载初始数据失败: {e}")
             self.status_label.setText(f"数据加载失败: {e}")
@@ -625,7 +635,7 @@ class AssistantMainWindow(QMainWindow):
         self.update_secondary_tabs()
         self.update_tree()
         self.update_login_status()
-        self.update_tip_text()
+        # self.update_tip_text()
     
     def update_primary_tabs(self):
         """更新一级Tab"""
@@ -639,10 +649,6 @@ class AssistantMainWindow(QMainWindow):
                 tab_widget = QWidget()
                 self.primary_tabs[tab_name] = tab_widget
                 self.primary_tab_widget.addTab(tab_widget, tab_name)
-        # 注释掉添加"+"按钮的代码，因为话术类型是写死的，不需要添加功能
-        # # 添加"+"按钮作为最后一个Tab
-        # add_tab_widget = QWidget()
-        # self.primary_tab_widget.addTab(add_tab_widget, "+")
             # 选中当前Tab
             tab_names = list(self.scripts_data.keys())
             if self.current_primary_tab in tab_names:
@@ -658,40 +664,101 @@ class AssistantMainWindow(QMainWindow):
             print(f"重新设置一级Tab右键菜单失败: {e}")
     
     def update_secondary_tabs(self):
-        """更新二级Tab"""
-        # 临时断开信号连接，避免在更新过程中触发事件
-        self.secondary_tab_widget.currentChanged.disconnect()
+        """更新二级Tab（按钮形式）"""
+        # 清空现有按钮
+        for button in self.secondary_tab_buttons.values():
+            button.deleteLater()
+        self.secondary_tab_buttons.clear()
         
-        # 清空现有Tab
-        self.secondary_tab_widget.clear()
-        
-        # 添加新Tab
+        # 添加新按钮
         if self.current_primary_tab in self.scripts_data:
-            for tab_name in self.scripts_data[self.current_primary_tab].keys():
-                tab_widget = QWidget()
-                self.secondary_tab_widget.addTab(tab_widget, tab_name)
-            
-            # 添加"+"按钮作为最后一个Tab，用于添加话术分类
-            add_tab_widget = QWidget()
-            self.secondary_tab_widget.addTab(add_tab_widget, "+")
-            
-            # 选中当前Tab
             tab_names = list(self.scripts_data[self.current_primary_tab].keys())
-            if self.current_secondary_tab in tab_names:
-                index = tab_names.index(self.current_secondary_tab)
-                self.secondary_tab_widget.setCurrentIndex(index)
-                print(f"设置二级Tab索引: {index}, 对应Tab: {self.current_secondary_tab}")  # 调试信息
-        
-        # 重新连接信号
-        self.secondary_tab_widget.currentChanged.connect(self.on_secondary_tab_changed)
-        
-        # 重新设置右键菜单（因为Tab被清空重建了）
-        try:
-            self.secondary_tab_widget.tabBar().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-            self.secondary_tab_widget.tabBar().customContextMenuRequested.connect(self.show_secondary_tab_context_menu)
-            print("二级Tab右键菜单重新设置成功")  # 调试信息
-        except Exception as e:
-            print(f"重新设置二级Tab右键菜单失败: {e}")
+            
+            # 按钮参数
+            button_height = 24
+            button_spacing =1
+            margin = 1
+            min_button_width = 20  # 最小宽度
+            max_button_width = 90  # 最大宽度
+            
+            # 计算容器宽度
+            container_width = self.secondary_buttons_widget.width()
+            if container_width <= 50:  # 如果宽度太小或为0，使用父容器宽度
+                parent_width = self.width() if self.width() > 0 else 300
+                container_width = parent_width - 20  # 减去一些边距
+            
+            available_width = container_width - 2 * margin
+            
+            x = margin
+            y = margin
+            
+            for tab_name in tab_names:
+                # 创建按钮
+                button = ModernTabButton(tab_name, tab_name == self.current_secondary_tab)
+                button.setParent(self.secondary_buttons_widget)
+                
+                # 根据文字内容计算按钮宽度
+                font_metrics = button.fontMetrics()
+                text_width = font_metrics.horizontalAdvance(tab_name)
+                # 添加左右内边距
+                button_width = max(min_button_width, min(text_width + 10, max_button_width))
+                
+                button.setFixedSize(button_width, button_height)
+                
+                # 检查是否需要换行
+                if x + button_width > container_width - margin and x > margin:
+                    # 换行
+                    x = margin
+                    y += button_height + button_spacing
+                
+                # 连接点击事件
+                button.clicked.connect(lambda checked=False, name=tab_name: self.on_secondary_button_clicked(name))
+                
+                # 设置右键菜单
+                button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+                button.customContextMenuRequested.connect(
+                    lambda pos, name=tab_name: self.show_secondary_button_context_menu(pos, name)
+                )
+                
+                # 设置位置
+                button.move(x, y)
+                button.show()
+                
+                self.secondary_tab_buttons[tab_name] = button
+                
+                # 计算下一个按钮位置
+                x += button_width + button_spacing
+            
+            # 添加"+"按钮
+            add_button = ModernTabButton("+", False)
+            add_button.setParent(self.secondary_buttons_widget)
+            add_button_width = 30
+            add_button.setFixedSize(add_button_width, button_height)
+            
+            # 检查"+"按钮是否需要换行
+            if x + add_button_width > container_width - margin and x > margin:
+                x = margin
+                y += button_height + button_spacing
+            
+            add_button.clicked.connect(lambda checked=False: self.show_add_dialog_with_default_type(0))
+            
+            # 设置位置
+            add_button.move(x, y)
+            add_button.show()
+            
+            self.secondary_tab_buttons["+"] = add_button
+            
+            # 更新容器高度 - 根据最后一个按钮的位置计算
+            # 如果所有按钮都在第一行 (y == margin)，则只需要一行的高度
+            if y == margin:  # 所有按钮都在第一行
+                new_height = button_height + margin * 2
+            else:  # 有多行按钮
+                new_height = y + button_height + margin
+            
+            # 设置最小高度，确保不会太小
+            new_height = max(new_height, 0)
+            self.secondary_buttons_widget.setMinimumHeight(new_height)
+            self.secondary_buttons_widget.setMaximumHeight(new_height)
     
     def update_tree(self):
         """更新树形列表"""
@@ -760,15 +827,15 @@ class AssistantMainWindow(QMainWindow):
         else:
             self.login_btn.setText("登录")
     
-    def update_tip_text(self):
-        """更新提示文字"""
-        mode_text = {
-            "添加到剪贴板": "复制到剪贴板",
-            "添加到输入框": "添加到输入框",
-            "直接发送": "直接发送"
-        }
-        tip = f"双击话术 → {mode_text.get(self.send_mode, self.send_mode)}"
-        self.tip_label.setText(tip)
+    # def update_tip_text(self):
+    #     """更新提示文字"""
+    #     mode_text = {
+    #         "添加到剪贴板": "复制到剪贴板",
+    #         "添加到输入框": "添加到输入框",
+    #         "直接发送": "直接发送"
+    #     }
+    #     tip = f"双击话术 → {mode_text.get(self.send_mode, self.send_mode)}"
+    #     self.tip_label.setText(tip)
     
     # 事件处理方法
     def on_window_changed(self, window_handle: int, window_title: str):
@@ -849,13 +916,6 @@ class AssistantMainWindow(QMainWindow):
         if index >= 0:
             tab_names = list(self.scripts_data.keys())
             
-            # 去掉处理"+"Tab点击的逻辑，因为话术类型是写死的，不需要添加功能
-            # # 检查是否点击了"+"Tab（最后一个Tab）
-            # if index == len(tab_names):
-            #     # 点击了"+"Tab，触发添加一级分类
-            #     self.add_primary_tab()
-            #     return
-            
             # 正常的Tab切换
             if index < len(tab_names):
                 new_tab = tab_names[index]
@@ -866,29 +926,20 @@ class AssistantMainWindow(QMainWindow):
                     self.update_secondary_tabs()
                     self.load_current_scripts_data()
     
-    def on_secondary_tab_changed(self, index: int):
-        """二级Tab切换"""
-        if index >= 0:
-            tab_names = list(self.scripts_data[self.current_primary_tab].keys())
+    def on_secondary_button_clicked(self, tab_name: str):
+        """二级按钮点击事件"""
+        if tab_name != self.current_secondary_tab:
+            print(f"切换到二级Tab: {tab_name}, 当前: {self.current_secondary_tab}")
             
-            print(f"二级Tab切换: index={index}, tab_names数量={len(tab_names)}, tab_names={tab_names}")  # 调试信息
+            # 更新按钮状态
+            for name, button in self.secondary_tab_buttons.items():
+                if name != "+":  # 跳过"+"按钮
+                    button.set_selected(name == tab_name)
             
-            # 检查是否点击了"+"Tab（最后一个Tab）
-            if index == len(tab_names):
-                print("检测到点击了+Tab，打开添加弹窗")  # 调试信息
-                # 点击了"+"Tab，打开添加弹窗并默认选择话术分类
-                self.show_add_dialog_with_default_type(0)  # 0表示话术分类
-                return
-            
-            if index < len(tab_names):
-                new_tab = tab_names[index]
-                print(f"切换到二级Tab: {new_tab}, 当前: {self.current_secondary_tab}")  # 调试信息
-                if new_tab != self.current_secondary_tab:
-                    self.save_scripts()
-                    self.current_secondary_tab = new_tab
-                    self.load_current_scripts_data()
-            else:
-                print(f"警告: 二级Tab索引超出范围 index={index}, 最大索引={len(tab_names)-1}")  # 调试信息
+            # 保存当前数据并切换
+            self.save_scripts()
+            self.current_secondary_tab = tab_name
+            self.load_current_scripts_data()
     
     def load_current_scripts_data(self):
         """加载当前Tab数据"""
@@ -1486,27 +1537,12 @@ class AssistantMainWindow(QMainWindow):
         except Exception as e:
             print(f"右键菜单错误: {e}")
     
-    def show_secondary_tab_context_menu(self, position):
-        """显示二级Tab右键菜单"""
-        print(f"二级Tab右键菜单被触发，位置: {position}")  # 调试信息
+    def show_secondary_button_context_menu(self, position, tab_name: str):
+        """显示二级按钮右键菜单"""
+        print(f"二级按钮右键菜单被触发，按钮: {tab_name}")
         
-        # 获取点击的Tab索引
-        tab_index = self.secondary_tab_widget.tabBar().tabAt(position)
-        print(f"二级Tab索引: {tab_index}")  # 调试信息
-        
-        if tab_index < 0:
-            print("无效的二级Tab索引")
-            return
-            
-        tab_names = list(self.scripts_data[self.current_primary_tab].keys())
-        print(f"二级Tab名称列表: {tab_names}")  # 调试信息
-        
-        if tab_index >= len(tab_names):
-            print("点击的是无效Tab，不显示菜单")
-            return
-            
-        tab_name = tab_names[tab_index]
-        print(f"选中的二级Tab名称: {tab_name}")  # 调试信息
+        if tab_name == "+":
+            return  # "+"按钮不显示右键菜单
         
         try:
             menu = QMenu(self)
@@ -1519,13 +1555,14 @@ class AssistantMainWindow(QMainWindow):
             delete_action.triggered.connect(lambda: self.delete_secondary_tab(tab_name))
             menu.addAction(delete_action)
             
-            # 在Tab栏上显示菜单
-            global_pos = self.secondary_tab_widget.tabBar().mapToGlobal(position)
-            print(f"二级Tab菜单显示位置: {global_pos}")  # 调试信息
-            menu.exec(global_pos)
+            # 获取按钮并显示菜单
+            button = self.secondary_tab_buttons.get(tab_name)
+            if button:
+                global_pos = button.mapToGlobal(position)
+                menu.exec(global_pos)
             
         except Exception as e:
-            print(f"二级Tab右键菜单错误: {e}")
+            print(f"二级按钮右键菜单错误: {e}")
     
     def add_script_to_category(self, category: str):
         """向分类添加话术"""
@@ -1929,13 +1966,6 @@ class AssistantMainWindow(QMainWindow):
         
         menu.addSeparator()
         
-        # 帮助
-        about_action = QAction("关于", self)
-        about_action.triggered.connect(self.show_about)
-        menu.addAction(about_action)
-        
-        menu.addSeparator()
-        
         # 退出
         exit_action = QAction("退出", self)
         exit_action.triggered.connect(self.close)
@@ -1948,7 +1978,7 @@ class AssistantMainWindow(QMainWindow):
         """设置发送模式"""
         self.send_mode = mode
         self.save_config()
-        self.update_tip_text()
+        # self.update_tip_text()
         self.status_label.setText(f"发送模式: {mode}")
     
     def import_data(self):
@@ -2125,27 +2155,6 @@ class AssistantMainWindow(QMainWindow):
         self.dock_manager = WindowDockManager(self)
         self.dock_manager.dock_position_changed.connect(self.on_dock_position_changed)
 
-    def show_about(self):
-        """显示关于对话框"""
-        QMessageBox.about(
-            self, "关于聚雍宝",
-            """
-            <h3>聚雍宝 - 智能客服助手</h3>
-            <p>版本: 2.0 (PySide6版)</p>
-            <p>一个功能强大的客服话术管理和自动发送工具</p>
-            <p><b>主要功能:</b></p>
-            <ul>
-            <li>话术分类管理</li>
-            <li>智能窗口检测</li>
-            <li>多种发送模式</li>
-            <li>云端数据同步</li>
-            <li>数据导入导出</li>
-            <li>窗口吸附功能</li>
-            </ul>
-            <p>© 2024 聚雍宝团队</p>
-            """
-        )
-    
     def save_scripts(self):
         """保存话术数据"""
         try:
@@ -2353,8 +2362,7 @@ def main():
         theme_manager.apply_theme(app, "modern_optimized")
         print("✅ 已应用优化现代主题")
     except Exception as e:
-        print(f"⚠️ 主题加载失败，使用备用样式: {e}")
-        style_manager.apply_style(app, "modern")
+        print(f"⚠️ 主题加载失败: {e}")
     
     # 创建主窗口
     window = AssistantMainWindow()

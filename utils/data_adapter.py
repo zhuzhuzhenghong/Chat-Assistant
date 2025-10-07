@@ -2,8 +2,9 @@ import json
 import os
 from typing import Dict, Optional, Any
 import threading
-from api_manager import APIManager
-import utils
+from utils.api_manager import APIManager
+import utils as utils
+import utils.constants as constants
 
 json_file_lock = threading.Lock()
 
@@ -11,12 +12,11 @@ json_file_lock = threading.Lock()
 class DataAdapter:
     """数据适配器 - 用户登录后获取云端数据，获取不到则使用默认数据"""
 
-    def __init__(self, api_manager: Optional[APIManager] = None,
-                 script_file: str = "scripts.json", config_file: str = "config.json", user_id: int = 0):
+    def __init__(self, api_manager: Optional[APIManager] = APIManager):
         self.api_manager = api_manager
-        self.scripts_file = script_file
-        self.config_file = config_file
-        self.user_id = user_id
+        self.scripts_file = constants.real_scripts_rel_path
+        self.config_file = constants.real_config_rel_path
+        self.user_id = None
 
         # 用户数据结构（只包含话术数据）
         self.scripts_data = {}

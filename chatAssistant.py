@@ -13,19 +13,19 @@ from typing import Dict, Any, Optional
 
 # PySide6 imports
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-    QGridLayout, QLabel, QPushButton, QLineEdit, QTextEdit, QTreeWidget, 
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QGridLayout, QLabel, QPushButton, QLineEdit, QTextEdit, QTreeWidget,
     QTreeWidgetItem, QGroupBox, QCheckBox, QComboBox, QFrame, QSplitter,
     QScrollArea, QTabWidget, QStatusBar, QMenuBar, QMenu, QMessageBox,
     QDialog, QDialogButtonBox, QProgressBar, QSpacerItem, QSizePolicy,
     QLayout
 )
 from PySide6.QtCore import (
-    Qt, QTimer, QThread, QObject, Signal, QSize, QPropertyAnimation, 
+    Qt, QTimer, QThread, QObject, Signal, QSize, QPropertyAnimation,
     QEasingCurve, QRect, QPoint
 )
 from PySide6.QtGui import (
-    QFont, QIcon, QPalette, QColor, QPixmap, QPainter, QBrush, 
+    QFont, QIcon, QPalette, QColor, QPixmap, QPainter, QBrush,
     QLinearGradient, QAction, QKeySequence, QCursor
 )
 
@@ -51,99 +51,102 @@ from components.custom_title_bar import CustomTitleBar
 from components.add_dialog import AddDialog
 
 """流式布局类"""
+
+
 class FlowLayout(QLayout):
     """自动换行的流式布局"""
-    
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._item_list = []
         self._spacing = -1
-        
+
     def __del__(self):
         item = self.takeAt(0)
         while item:
             item = self.takeAt(0)
-            
+
     def addItem(self, item):
         self._item_list.append(item)
-        
+
     def count(self):
         return len(self._item_list)
-        
+
     def itemAt(self, index):
         if 0 <= index < len(self._item_list):
             return self._item_list[index]
         return None
-        
+
     def takeAt(self, index):
         if 0 <= index < len(self._item_list):
             return self._item_list.pop(index)
         return None
-        
+
     def expandingDirections(self):
         return Qt.Orientation(0)
-        
+
     def hasHeightForWidth(self):
         return True
-        
+
     def heightForWidth(self, width):
         height = self._do_layout(QRect(0, 0, width, 0), True)
         return height
-        
+
     def setGeometry(self, rect):
         super().setGeometry(rect)
         self._do_layout(rect, False)
-        
+
     def sizeHint(self):
         return self.minimumSize()
-        
+
     def minimumSize(self):
         size = QSize()
         for item in self._item_list:
             size = size.expandedTo(item.minimumSize())
         size += QSize(2 * self.contentsMargins().left(), 2 * self.contentsMargins().top())
         return size
-        
+
     def _do_layout(self, rect, test_only):
         x = rect.x()
         y = rect.y()
         line_height = 0
         spacing = self.spacing()
-        
+
         for item in self._item_list:
             widget = item.widget()
             if widget.isHidden():
                 continue
-                
+
             space_x = spacing
             space_y = spacing
-            
+
             next_x = x + item.sizeHint().width() + space_x
             if next_x - space_x > rect.right() and line_height > 0:
                 x = rect.x()
                 y = y + line_height + space_y
                 next_x = x + item.sizeHint().width() + space_x
                 line_height = 0
-                
+
             if not test_only:
                 item.setGeometry(QRect(QPoint(x, y), item.sizeHint()))
-                
+
             x = next_x
             line_height = max(line_height, item.sizeHint().height())
-            
+
         return y + line_height - rect.y()
+
 
 class WindowMonitor(QThread):
     """窗口监控线程"""
 
     window_changed = Signal(int, str)  # 窗口句柄, 窗口标题
-    
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.monitoring = True
         self.is_locked = False
         self.my_window_handle = None
-        
+
     def run(self):
         """监控线程主循环"""
         while self.monitoring:
@@ -151,9 +154,9 @@ class WindowMonitor(QThread):
                 if self.is_locked:
                     self.msleep(500)
                     continue
-                    
+
                 current_window = win32gui.GetForegroundWindow()
-                
+
                 if current_window and current_window != self.my_window_handle:
                     try:
                         title = win32gui.GetWindowText(current_window)
@@ -161,29 +164,31 @@ class WindowMonitor(QThread):
                             self.window_changed.emit(current_window, title.strip())
                     except:
                         pass
-                        
+
                 self.msleep(500)
             except Exception as e:
-                print('监控线程主循环报错',e)
+                print('监控线程主循环报错', e)
                 self.msleep(1000)
-    
+
     def stop_monitoring(self):
         """停止监控"""
         self.monitoring = False
         self.quit()
         self.wait()
 
+
 class ModernButton(QPushButton):
     """现代化按钮组件"""
+
     def __init__(self, text="", button_type="default", parent=None):
         super().__init__(text, parent)
         self.button_type = button_type
         self.setup_style()
-        
+
     def setup_style(self):
         """设置按钮样式"""
         self.setObjectName(f"{self.button_type}_button")
-        
+
         # 设置最小尺寸
         if self.button_type == "small":
             self.setMinimumSize(50, 20)
@@ -191,21 +196,22 @@ class ModernButton(QPushButton):
         else:
             self.setMinimumSize(80, 32)
 
+
 class ModernTabButton(QPushButton):
     """现代化Tab按钮"""
-    
+
     def __init__(self, text="", is_selected=False, parent=None):
         super().__init__(text, parent)
         self.is_selected = is_selected
         self.setup_style()
-        
+
     def setup_style(self):
         """设置Tab按钮样式"""
         if self.is_selected:
             self.setObjectName("tab_button_selected")
         else:
             self.setObjectName("tab_button")
-            
+
     def set_selected(self, selected: bool):
         """设置选中状态"""
         self.is_selected = selected
@@ -215,25 +221,27 @@ class ModernTabButton(QPushButton):
         self.style().polish(self)
         self.update()
 
+
 class SearchLineEdit(QLineEdit):
     """带占位符的搜索框"""
-    
+
     def __init__(self, placeholder="", parent=None):
         super().__init__(parent)
         self.placeholder_text = placeholder
         self.setPlaceholderText(placeholder)
-        
+
         # 设置样式
         self.setMinimumHeight(28)  # 减小高度使其更紧凑
         self.setMaximumHeight(32)  # 设置最大高度
 
+
 class ModernTreeWidget(QTreeWidget):
     """现代化树形控件"""
-    
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setup_style()
-        
+
     def setup_style(self):
         """设置树形控件样式"""
         self.setHeaderHidden(True)
@@ -247,82 +255,83 @@ class ModernTreeWidget(QTreeWidget):
         self.setContentsMargins(0, 0, 0, 0)
         self.setViewportMargins(0, 0, 0, 0)
 
+
 class AssistantMainWindow(QMainWindow):
     """主窗口类"""
-    
+
     def __init__(self):
         super().__init__()
-        
+
         # 初始化拖拽相关属性
         self.drag_position = None
         self.resize_direction = None
         self.resize_margin = 8  # 边缘调整大小的区域宽度
         self.resize_start_pos = None
         self.resize_start_geometry = None
-        
+
         # 初始化数据
         self.init_data()
-        
+
         # 设置窗口
         self.setup_window()
-        
+
         # 创建界面
         self.create_ui()
-        
+
         # 初始化监控
         self.init_monitoring()
-        
+
         # 初始化吸附管理器
         self.init_dock_manager()
-        
+
         # 加载数据
         self.load_initial_data()
-        
+
     def init_data(self):
         """初始化数据变量"""
         # 话术数据文件
         self.script_file = "scripts.json"
         self.config_file = "config.json"
-        
+
         # Tab数据结构
         self.current_primary_tab = "公司话术"
         self.current_secondary_tab = "常用"
-        
+
         # 窗口跟踪
         self.target_window = None
         self.target_title = "无"
         self.is_locked = False
-        
+
         # 发送模式配置
         self.send_mode = "直接发送"
         self.always_on_top = True
         self.position_locked = False
-        
+
         # 吸附功能
         self.dock_enabled = False
         self.dock_gap = 1
-        
+
         # 用户登录状态
         self.current_user_id = None
         self.is_logged_in = False
-        
+
         # 数据结构
         self.scripts_data = {}
         self.current_scripts_data = {}
         self.filtered_scripts = {}
-        
+
         # 组件
         self.api_manager = None
         self.data_adapter = None
         self.window_monitor = None
         self.dock_manager = None
-        
+
         # UI组件引用
         self.primary_tabs = {}
         self.secondary_tab_buttons = {}
         self.secondary_buttons_widget = None
         self.secondary_buttons_layout = None
-        
+
         # 吸附功能配置
         self.dock_enabled = False
         self.dock_gap = 1
@@ -334,25 +343,23 @@ class AssistantMainWindow(QMainWindow):
         """设置窗口属性"""
         self.setWindowTitle("聚雍宝")
         self.setMinimumSize(300, 500)
-        
+
         # 设置无边框窗口
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.resize(300, 700)
-        
+
         # 设置窗口图标（如果有的话）
         # self.setWindowIcon(QIcon("styles/icons/app_icon.png"))
-        
+
         # 设置窗口置顶
         if self.always_on_top:
             self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
-
-
-
 
     # <============================监控窗口相关方法==============================>
 
     def init_monitoring(self):
         """初始化窗口监控"""
+
         # 获取自己的窗口句柄
         def find_my_window(hwnd, param):
             try:
@@ -364,40 +371,38 @@ class AssistantMainWindow(QMainWindow):
             except:
                 pass
             return True
-        
+
         # 创建监控线程
         self.window_monitor = WindowMonitor(self)
         self.window_monitor.window_changed.connect(self.on_window_changed)
-        
+
         # 延迟启动监控
         QTimer.singleShot(1000, self.start_monitoring)
-        
 
         # 事件处理方法
+
     def on_window_changed(self, window_handle: int, window_title: str):
         """窗口变化事件"""
         if not self.is_locked:
             self.target_window = window_handle
             self.target_title = window_title
             self.update_target_display()
-            
+
             # 如果启用了吸附功能，更新吸附目标
             if self.dock_enabled and self.dock_manager:
                 self.dock_manager.enable_docking(window_handle)
-
 
     def update_target_display(self):
         """更新目标显示"""
         display_title = self.target_title
         if len(display_title) > 15:
             display_title = display_title[:15] + "..."
-        
+
         lock_status = "🔒" if self.is_locked else ""
         dock_status = "📎" if self.dock_enabled else ""
         # self.target_label.setText(f"{lock_status}{dock_status}目标: {display_title}")
         # 目标标签已被移除，改为在状态栏显示
         self.status_label.setText(f"{lock_status}{dock_status}目标: {display_title}")
-
 
     def start_monitoring(self):
         """启动窗口监控"""
@@ -414,19 +419,16 @@ class AssistantMainWindow(QMainWindow):
                 except:
                     pass
                 return True
-            
+
             # 查找自己的窗口句柄
             win32gui.EnumWindows(find_my_window, None)
             self.window_monitor.start()
-    
+
     def init_dock_manager(self):
         """初始化吸附管理器"""
         self.dock_manager = WindowDockManager(self)
         self.dock_manager.dock_position_changed.connect(self.on_dock_position_changed)
-    
-    
-    
-    
+
     # <============================获取数据方法==============================>
 
     def load_initial_data(self):
@@ -439,31 +441,31 @@ class AssistantMainWindow(QMainWindow):
                 config_file=self.config_file,
                 user_id=0
             )
-            
+
             # 初始化API管理器
             self.api_manager = APIManager()
-            
+
             # 加载数据
             self.load_data_from_adapter()
-            
+
             # 更新界面
             self.update_all_ui()
-            
+
             # 初始化标题栏状态
             if hasattr(self, 'title_bar'):
                 self.title_bar.set_dock_state(self.dock_enabled)
                 self.title_bar.set_lock_state(self.position_locked)
                 self.title_bar.set_topmost_state(self.always_on_top)
-            
+
             # 延迟更新按钮布局，确保界面完全渲染
             QTimer.singleShot(100, self.update_secondary_tabs)
-            
+
         except Exception as e:
             print(f"加载初始数据失败: {e}")
             self.status_label.setText(f"数据加载失败: {e}")
-    
 
     def load_data_from_adapter(self):
+        print('load_data_from_adapter')
         """从数据适配器加载数据"""
         if self.data_adapter:
             # 获取话术数据
@@ -478,7 +480,7 @@ class AssistantMainWindow(QMainWindow):
             else:
                 # 使用默认数据
                 self.scripts_data = utils.init_scripts_data()
-            
+
             # 加载配置
             config = self.data_adapter.get_config_data()
             if config:
@@ -486,30 +488,30 @@ class AssistantMainWindow(QMainWindow):
                 self.always_on_top = config.get('always_on_top', self.always_on_top)
                 self.dock_enabled = config.get('dock_enabled', self.dock_enabled)
                 self.dock_gap = config.get('dock_gap', self.dock_gap)
-                
+
                 # 更新吸附管理器配置
                 if self.dock_manager:
                     self.dock_manager.set_dock_gap(self.dock_gap)
-                
+
                 # 更新UI状态
                 if hasattr(self, 'dock_checkbox'):
                     self.dock_checkbox.setChecked(self.dock_enabled)
-            
+
             # 更新当前数据
             self.current_scripts_data = self.get_current_scripts_data()
             self.filtered_scripts = self.current_scripts_data.copy()
-    
+
     def sync_cloud_data(self):
         """同步云端数据"""
         try:
             if not self.is_logged_in or not self.current_user_id:
                 return False
-            
+
             if self.data_adapter:
                 if self.data_adapter:
                     self.data_adapter.api_manager = self.api_manager
                     self.data_adapter.user_id = self.current_user_id or 0
-                
+
                 success = self.data_adapter.load_user_data()
                 if success:
                     self.load_data_from_adapter()
@@ -524,15 +526,14 @@ class AssistantMainWindow(QMainWindow):
             self.status_label.setText("数据同步失败，使用本地数据")
             return False
 
-    
     def get_current_scripts_data(self) -> Dict[str, Any]:
         """获取当前选中Tab的数据"""
         if hasattr(self, 'scripts_data'):
             return self.scripts_data.get(self.current_primary_tab, {}).get(self.current_secondary_tab, {})
         return {}
-    
 
-    def load_current_scripts_data(self,isClear:bool = False):
+    def load_current_scripts_data(self, isClear: bool = False):
+        print('load_current_scripts_data')
         """加载当前Tab数据"""
         self.current_scripts_data = self.get_current_scripts_data()
         self.filtered_scripts = self.current_scripts_data.copy()
@@ -548,7 +549,7 @@ class AssistantMainWindow(QMainWindow):
                 self.data_adapter.save_local_scripts_data()
         except Exception as e:
             print(f"保存数据失败: {e}")
-    
+
     def save_config(self):
         """保存配置数据"""
         try:
@@ -565,8 +566,6 @@ class AssistantMainWindow(QMainWindow):
         except Exception as e:
             print(f'保存配置失败: {e}')
 
-
-
     # <============================创建界面元素方法==============================>
 
     def create_ui(self):
@@ -575,30 +574,30 @@ class AssistantMainWindow(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         central_widget.setObjectName("main_frame")
-        
+
         # 主布局
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)  # 减少顶部边距
         main_layout.setSpacing(2)  # 组件之间的间距
-        
+
         # 创建自定义标题栏
         self.title_bar = CustomTitleBar()
         main_layout.addWidget(self.title_bar)
-        
+
         # 连接标题栏信号
         self.title_bar.close_clicked.connect(self.close)
         self.title_bar.minimize_clicked.connect(self.showMinimized)
         self.title_bar.dock_toggled.connect(self.on_dock_changed)
         self.title_bar.lock_toggled.connect(self.on_lock_changed)
         self.title_bar.topmost_toggled.connect(self.on_topmost_changed)
-        
+
         # 创建各个部分
         self.create_primary_tabs_section(main_layout)
         self.create_secondary_tabs_section(main_layout)
         self.create_tree_section(main_layout)
         self.create_search_section(main_layout)
         self.create_status_section(main_layout)
-        
+
     def create_primary_tabs_section(self, parent_layout):
         """创建话术类型Tab部分"""
         primary_group = QWidget()
@@ -607,12 +606,12 @@ class AssistantMainWindow(QMainWindow):
         # 2. 设置水平布局，边距全部设为0（更紧凑）
         primary_layout = QHBoxLayout(primary_group)
         primary_layout.setContentsMargins(0, 0, 0, 0)  # 减少底部边距
-        
+
         # 3. 创建标签页控件
         self.primary_tab_widget = QTabWidget()
-        self.primary_tab_widget.setTabPosition(QTabWidget.North) # 标签在顶部
-        self.primary_tab_widget.currentChanged.connect(self.on_primary_tab_changed) # 切换标签时触发
-        
+        self.primary_tab_widget.setTabPosition(QTabWidget.North)  # 标签在顶部
+        self.primary_tab_widget.currentChanged.connect(self.on_primary_tab_changed)  # 切换标签时触发
+
         # 4. 为标签栏设置右键菜单功能
         # try:
         #     # 设置标签栏支持自定义右键菜单
@@ -622,37 +621,37 @@ class AssistantMainWindow(QMainWindow):
         #     print("一级Tab右键菜单设置成功")  # 调试信息
         # except Exception as e:
         #     print(f"设置一级Tab右键菜单失败: {e}")  # 错误处理
-        
+
         primary_layout.addWidget(self.primary_tab_widget, 1)
-        
+
     def create_secondary_tabs_section(self, parent_layout):
         """创建话术分类Tab部分（按钮形式）"""
         secondary_group = QWidget()
         parent_layout.addWidget(secondary_group)
-        
+
         secondary_layout: QVBoxLayout = QVBoxLayout(secondary_group)
         secondary_layout.setContentsMargins(0, 0, 0, 0)
         # secondary_layout.setSpacing(0)
-        
+
         # 创建按钮容器
         self.secondary_buttons_widget = QWidget()
         # self.secondary_buttons_widget.setMinimumHeight(40)
-        
+
         # 存储按钮的字典和布局信息
         self.secondary_tab_buttons = {}
         self.button_rows = []  # 存储每行的按钮
-        
+
         # 直接添加按钮容器到布局
         secondary_layout.addWidget(self.secondary_buttons_widget)
-        
+
     def create_tree_section(self, parent_layout):
         """创建树形列表部分"""
         tree_group = QGroupBox()  # 恢复标题显示
         parent_layout.addWidget(tree_group, 1)  # 设置拉伸因子
-        
+
         tree_layout = QVBoxLayout(tree_group)
         tree_layout.setContentsMargins(0, 0, 0, 0)  # 大幅减少上边距
-        
+
         # 树形控件
         self.tree_widget = ModernTreeWidget()
         self.tree_widget.setHeaderHidden(True)
@@ -661,43 +660,40 @@ class AssistantMainWindow(QMainWindow):
         self.tree_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree_widget.customContextMenuRequested.connect(self.show_tree_context_menu)
         tree_layout.addWidget(self.tree_widget)
-        
+
     def create_search_section(self, parent_layout):
         """创建搜索部分"""
         search_group = QWidget()  # 去掉标题
         parent_layout.addWidget(search_group)
-        
+
         search_layout = QHBoxLayout(search_group)
         search_layout.setContentsMargins(0, 0, 0, 0)
-        
+
         # 搜索框
         self.search_edit = SearchLineEdit("搜索话术...")  # 缩短placeholder文字
         self.search_edit.textChanged.connect(self.on_search_changed)
         search_layout.addWidget(self.search_edit, 1)
-        
+
     def create_status_section(self, parent_layout):
         """创建状态栏部分"""
         status_layout = QHBoxLayout()
         parent_layout.addLayout(status_layout)
-        
+
         # 状态标签
         self.status_label = QLabel("就绪")
         self.status_label.setObjectName("status_label")
         status_layout.addWidget(self.status_label, 1)
-        
+
         # 登录按钮
         self.login_btn = ModernButton("登录", "secondary")
         self.login_btn.clicked.connect(self.show_login_dialog)
         status_layout.addWidget(self.login_btn)
-        
+
         # 设置按钮
         settings_btn = ModernButton("⚙️", "small")
         settings_btn.setMaximumWidth(32)
         settings_btn.clicked.connect(self.show_settings_menu)
         status_layout.addWidget(settings_btn)
-
-
-
 
     # <============================更新界面元素方法==============================>
 
@@ -707,13 +703,13 @@ class AssistantMainWindow(QMainWindow):
         self.update_secondary_tabs()
         self.update_tree()
         self.update_login_status()
-    
+
     def update_primary_tabs(self):
         """更新话术类型Tab"""
         # 清空现有Tab
         self.primary_tab_widget.clear()
         self.primary_tabs.clear()
-        
+
         # 添加新Tab
         if self.scripts_data:
             for tab_name in self.scripts_data.keys():
@@ -725,7 +721,7 @@ class AssistantMainWindow(QMainWindow):
             if self.current_primary_tab in tab_names:
                 index = tab_names.index(self.current_primary_tab)
                 self.primary_tab_widget.setCurrentIndex(index)
-        
+
         # # 重新设置右键菜单（因为Tab被清空重建了）
         # try:
         #     self.primary_tab_widget.tabBar().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -733,135 +729,133 @@ class AssistantMainWindow(QMainWindow):
         #     print("一级Tab右键菜单重新设置成功")  # 调试信息
         # except Exception as e:
         #     print(f"重新设置一级Tab右键菜单失败: {e}")
-    
+
     def update_secondary_tabs(self):
         """更新话术分类Tab（按钮形式）"""
         # 清空现有按钮
         for button in self.secondary_tab_buttons.values():
             button.deleteLater()
         self.secondary_tab_buttons.clear()
-        
+
         # 添加新按钮
         if self.current_primary_tab in self.scripts_data:
             tab_names = list(self.scripts_data[self.current_primary_tab].keys())
-            
+
             # 按钮参数
             button_height = 24
-            button_spacing =1
+            button_spacing = 1
             margin = 1
             min_button_width = 20  # 最小宽度
             max_button_width = 90  # 最大宽度
-            
+
             # 计算容器宽度
             container_width = self.secondary_buttons_widget.width()
             if container_width <= 50:  # 如果宽度太小或为0，使用父容器宽度
                 parent_width = self.width() if self.width() > 0 else 300
                 container_width = parent_width
-            
+
             x = margin
             y = margin
-            
+
             for tab_name in tab_names:
                 # 创建按钮
                 button = ModernTabButton(tab_name, tab_name == self.current_secondary_tab)
                 button.setParent(self.secondary_buttons_widget)
-                
+
                 # 根据文字内容计算按钮宽度
                 font_metrics = button.fontMetrics()
                 text_width = font_metrics.horizontalAdvance(tab_name)
                 # 添加左右内边距
                 button_width = max(min_button_width, min(text_width + 10, max_button_width))
-                
+
                 button.setFixedSize(button_width, button_height)
-                
+
                 # 检查是否需要换行
                 if x + button_width > container_width - margin and x > margin:
                     # 换行
                     x = margin
                     y += button_height + button_spacing
-                
+
                 # 连接点击事件 - 使用默认参数捕获循环变量
-                button.clicked.connect(lambda checked = False, name=tab_name: self.on_secondary_button_clicked(name))
-                
+                button.clicked.connect(lambda checked=False, name=tab_name: self.on_secondary_button_clicked(name))
+
                 # 设置右键菜单
                 button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
                 button.customContextMenuRequested.connect(
                     lambda pos, name=tab_name: self.show_secondary_button_context_menu(pos, name)
                 )
-                
+
                 # 设置位置
                 button.move(x, y)
                 button.show()
-                
+
                 self.secondary_tab_buttons[tab_name] = button
-                
+
                 # 计算下一个按钮位置
                 x += button_width + button_spacing
-            
+
             # 添加"+"按钮
             add_button = ModernTabButton("+", False)
             add_button.setParent(self.secondary_buttons_widget)
             add_button_width = 30
             add_button.setFixedSize(add_button_width, button_height)
-            
+
             # 检查"+"按钮是否需要换行
             if x + add_button_width > container_width - margin and x > margin:
                 x = margin
                 y += button_height + button_spacing
-            
-            add_button.clicked.connect(lambda checked: self.show_add_dialog('category',self.current_primary_tab))
-            
+
+            add_button.clicked.connect(lambda checked: self.show_add_dialog('category', self.current_primary_tab))
+
             # 设置位置
             add_button.move(x, y)
             add_button.show()
-            
+
             self.secondary_tab_buttons["+"] = add_button
-            
+
             # 更新容器高度 - 根据最后一个按钮的位置计算
             # 如果所有按钮都在第一行 (y == margin)，则只需要一行的高度
             if y == margin:  # 所有按钮都在第一行
                 new_height = button_height + margin * 2
             else:  # 有多行按钮
                 new_height = y + button_height + margin
-            
+
             # 设置最小高度，确保不会太小
             new_height = max(new_height, 0)
             self.secondary_buttons_widget.setMinimumHeight(new_height)
             self.secondary_buttons_widget.setMaximumHeight(new_height)
-    
+
     def update_tree(self):
         """更新树形列表"""
         self.tree_widget.clear()
-        
+
         first_category_item = None
-        
+        print('filtered_scripts=====>', self.filtered_scripts)
         # 处理数据结构：话术标题 -> 话术内容列表
         for title_name, titles_data in self.filtered_scripts.items():
             # 创建分类节点
             category_item = QTreeWidgetItem([f"📁 {title_name}"])
             category_item.setData(0, Qt.ItemDataRole.UserRole, {"type": "title", "name": title_name})
             self.tree_widget.addTopLevelItem(category_item)
-            
+
             # 记录第一个分类项，用于默认高亮
             if first_category_item is None:
                 first_category_item = category_item
-            
+
             # 添加话术内容
             if isinstance(titles_data, list):
                 for i, content in enumerate(titles_data):
                     display_text = content if len(content) <= 50 else content[:50] + "..."
                     script_item = QTreeWidgetItem([f"💬 {display_text}"])
                     script_item.setData(0, Qt.ItemDataRole.UserRole, {
-                        "type": "script", 
-                        "content": content, 
+                        "type": "script",
+                        "content": content,
                         "title": title_name,
                         "index": i
                     })
                     category_item.addChild(script_item)
-               
-            
-            category_item.setExpanded(True)
 
+            category_item.setExpanded(True)
 
     def update_login_status(self):
         """更新登录状态"""
@@ -869,23 +863,20 @@ class AssistantMainWindow(QMainWindow):
             self.login_btn.setText(f"用户:{self.current_user_id[:6]}...")
         else:
             self.login_btn.setText("登录")
-    
-
-
 
     # <============================状态栏相关方法==============================>
-    
+
     def on_dock_changed(self, checked: bool):
         """吸附状态改变"""
         self.dock_enabled = checked
-        
+
         if checked:
             if not self.target_window:
                 self.dock_checkbox.setChecked(False)
                 self.dock_enabled = False
                 QMessageBox.warning(self, "警告", "没有检测到目标窗口！请先选择一个窗口。")
                 return
-            
+
             # 启用吸附
             if self.dock_manager:
                 self.dock_manager.enable_docking(self.target_window)
@@ -895,15 +886,13 @@ class AssistantMainWindow(QMainWindow):
             if self.dock_manager:
                 self.dock_manager.disable_docking()
                 self.status_label.setText("❌ 窗口吸附已禁用")
-        
+
         self.save_config()
-    
 
     def on_dock_position_changed(self, x: int, y: int, width: int, height: int):
         """吸附位置变化事件"""
         # 这里可以添加位置变化的处理逻辑
         pass
-
 
     def on_lock_changed(self, checked: bool):
         """锁定状态改变"""
@@ -913,29 +902,25 @@ class AssistantMainWindow(QMainWindow):
             self.status_label.setText("🔒 位置已锁定")
         else:
             self.status_label.setText("🔓 位置已解锁")
-    
+
     def on_topmost_changed(self, checked: bool):
         """置顶状态改变"""
         self.always_on_top = checked
-        
+
         # 更新窗口标志
         if checked:
             self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
         else:
             self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowStaysOnTopHint)
-        
+
         # 重新显示窗口以应用新的标志
         self.show()
         self.save_config()
-        
+
         if checked:
             self.status_label.setText("⬆ 窗口置顶已启用")
         else:
             self.status_label.setText("⬇ 窗口置顶已禁用")
-
-    
-
-
 
     # <============================话术类型点击事件相关方法==============================>
 
@@ -943,7 +928,7 @@ class AssistantMainWindow(QMainWindow):
         """话术类型Tab切换"""
         if index >= 0:
             tab_names = list(self.scripts_data.keys())
-            
+
             # 正常的Tab切换
             if index < len(tab_names):
                 new_tab = tab_names[index]
@@ -953,9 +938,10 @@ class AssistantMainWindow(QMainWindow):
                     self.current_secondary_tab = list(self.scripts_data[new_tab].keys())[0]
                     self.update_secondary_tabs()
                     self.load_current_scripts_data()
-    
-
-
+                    if self.is_search:
+                        # 清空搜索框
+                        self.is_search = False
+                        self.clear_search()
 
     # <============================话术分类点击事件相关方法==============================>
 
@@ -966,40 +952,41 @@ class AssistantMainWindow(QMainWindow):
             for name, button in self.secondary_tab_buttons.items():
                 if name != "+":  # 跳过"+"按钮
                     button.set_selected(name == tab_name)
-            
+                    if self.is_search:
+                        # 清空搜索框
+                        self.is_search = False
+                        self.clear_search()
+
             # 保存当前数据并切换
             # self.save_scripts()
             self.current_secondary_tab = tab_name
             self.load_current_scripts_data()
 
-
     def show_secondary_button_context_menu(self, position, tab_name: str):
         """显示话术分类按钮右键菜单"""
         if tab_name == "+":
             return  # "+"按钮不显示右键菜单
-        
+
         try:
             menu = QMenu(self)
-            
+
             rename_action = QAction("修改分类名称", self)
-            rename_action.triggered.connect(lambda checked: self.show_edit_dialog('category', tab_name, self.current_primary_tab))
+            rename_action.triggered.connect(
+                lambda checked: self.show_edit_dialog('category', tab_name, self.current_primary_tab))
             menu.addAction(rename_action)
-            
+
             delete_action = QAction("删除分类", self)
             delete_action.triggered.connect(lambda: self.delete_secondary_tab(tab_name))
             menu.addAction(delete_action)
-            
+
             # 获取按钮并显示菜单
             button = self.secondary_tab_buttons.get(tab_name)
             if button:
                 global_pos = button.mapToGlobal(position)
                 menu.exec(global_pos)
-            
+
         except Exception as e:
             print(f"话术分类按钮右键菜单错误: {e}")
-
-
-
 
     # <============================树形结构点击事件相关方法==============================>
 
@@ -1013,100 +1000,123 @@ class AssistantMainWindow(QMainWindow):
         #     global_pos = QCursor.pos()
         #     cursor_pos = self.tree_widget.mapFromGlobal(global_pos)
         #     item_rect = self.tree_widget.visualItemRect(item)
-            
+
         #     # 计算相对于item左边的点击位置
         #     relative_x = cursor_pos.x() - item_rect.left()
-            
+
         #     # 检查是否点击在📤图标区域
         #     if 0 <= relative_x <= 30:
         #         script_content = data.get("content", "")
         #         self.send_script_directly(script_content)
         #         return
-    
+
     def on_tree_double_click(self, item: QTreeWidgetItem, column: int):
         """树形控件双击事件"""
         data = item.data(0, Qt.ItemDataRole.UserRole)
         if data and data.get("type") == "script":
             script_content = data.get("content", "")
             self.send_script_text(script_content)
-    
 
     def show_tree_context_menu(self, position):
         """显示树形控件右键菜单"""
         item = self.tree_widget.itemAt(position)
-        
+
         menu = QMenu(self)
-        
+
         if not item:
             # 点击空白区域的菜单
             add_title_action = QAction("添加话术标题", self)
-            add_title_action.triggered.connect(lambda checked: self.show_add_dialog('title',self.current_primary_tab,self.current_secondary_tab))  # 1表示添加话术标题
+            add_title_action.triggered.connect(lambda checked: self.show_add_dialog('title', self.current_primary_tab,
+                                                                                    self.current_secondary_tab))  # 1表示添加话术标题
             menu.addAction(add_title_action)
 
             add_script_action = QAction("添加话术", self)
-            add_script_action.triggered.connect(lambda checked: self.show_add_dialog('script',self.current_primary_tab,self.current_secondary_tab))  # 2表示添加话术内容
+            add_script_action.triggered.connect(lambda checked: self.show_add_dialog('script', self.current_primary_tab,
+                                                                                     self.current_secondary_tab))  # 2表示添加话术内容
             menu.addAction(add_script_action)
 
             menu.exec(self.tree_widget.mapToGlobal(position))
             return
-        
+
         data = item.data(0, Qt.ItemDataRole.UserRole)
-        
+
         if not data:
             print("🔍 item没有数据，返回")
             return
-        
+
         if data.get("type") == "title":
             # 分类节点菜单
             title_name = data.get("name")
             add_script_action = QAction("添加话术", self)
-            add_script_action.triggered.connect(lambda checked: self.show_add_dialog('script',self.current_primary_tab,self.current_secondary_tab,title_name))  # 2表示添加话术内容
+            if self.is_search:
+                print('data', data)
+                list = data['name'].split('-')
+                type = list[0]
+                category = list[1]
+                title = list[2]
+                add_script_action.triggered.connect(
+                    lambda checked=False: self.show_add_dialog('script', type, category, title))
+            else:
+                add_script_action.triggered.connect(
+                    lambda checked: self.show_add_dialog('script', self.current_primary_tab, self.current_secondary_tab,
+                                                         title_name))  # 2表示添加话术内容
             menu.addAction(add_script_action)
-            
+
             if self.is_search:
                 print('搜索框内禁止编辑和删除话术标题')
             else:
                 menu.addSeparator()
-                
+
                 edit_action = QAction("编辑话术标题", self)
                 title_name = data.get("name")
-                edit_action.triggered.connect(lambda checked = False: self.show_edit_dialog('title', title_name, self.current_primary_tab,self.current_secondary_tab))
+                edit_action.triggered.connect(
+                    lambda checked=False: self.show_edit_dialog('title', title_name, self.current_primary_tab,
+                                                                self.current_secondary_tab))
                 menu.addAction(edit_action)
-                
+
                 delete_action = QAction("删除话术标题", self)
-                delete_action.triggered.connect(lambda checked = False: self.delete_script_title(title_name))
+                delete_action.triggered.connect(lambda checked=False: self.delete_script_title(title_name))
                 menu.addAction(delete_action)
-            
+
         elif data.get("type") == "script":
             # 话术节点菜单
             edit_action = QAction("编辑话术", self)
-            script_data = data['content']
+            content = data['content']
+            print('data', data)
+            if self.is_search:
+                list = data['title'].split('-')
+                type = list[0]
+                category = list[1]
+                title = list[2]
+                edit_action.triggered.connect(
+                    lambda checked=False: self.show_edit_dialog('script', content, type, category, title))
+            else:
+                # 获取话术标题（父节点的内容）
+                parent_item = item.parent()  # 获取父节点
+                title_name = None
+                if parent_item:
+                    parent_data = parent_item.data(0, Qt.ItemDataRole.UserRole)
+                    title_name = parent_data.get("name") if parent_data else None
 
-             # 获取话术标题（父节点的内容）
-            parent_item = item.parent()  # 获取父节点
-            title_name = None
-            if parent_item:
-                parent_data = parent_item.data(0, Qt.ItemDataRole.UserRole)
-                title_name = parent_data.get("name") if parent_data else None
-    
-            edit_action.triggered.connect(lambda checked = False: self.show_edit_dialog('script', script_data, self.current_primary_tab,self.current_secondary_tab,title_name))
+                edit_action.triggered.connect(
+                    lambda checked=False: self.show_edit_dialog('script', content, self.current_primary_tab,
+                                                                self.current_secondary_tab, title_name))
             menu.addAction(edit_action)
-            
+
             delete_action = QAction("删除话术", self)
-            delete_action.triggered.connect(lambda checked = False: self.delete_script(data))
+            delete_action.triggered.connect(lambda checked=False: self.delete_script(data))
             menu.addAction(delete_action)
-        
+
         menu.exec(self.tree_widget.mapToGlobal(position))
 
-
-
     # <============================搜索框相关方法==============================>
-    
+
     def on_search_changed(self, text: str):
+        print('on_search_changed')
         """搜索文本改变"""
-        search_text = text.strip().lower()
-        
-        if not search_text:
+        self.search_text = text.strip().lower()
+
+        if not self.search_text:
             self.filtered_scripts = self.current_scripts_data.copy()
             self.is_search = False
         else:
@@ -1116,24 +1126,22 @@ class AssistantMainWindow(QMainWindow):
                 for secondary_tab, categories in secondary_tabs.items():
                     for category, scripts in categories.items():
                         filtered_scripts = [script for script in scripts
-                                          if search_text in script.lower()]
+                                            if self.search_text in script.lower()]
                         if filtered_scripts:
                             self.is_search = True
-                            display_category = f"[{primary_tab}-{secondary_tab}] {category}"
+                            display_category = f"{primary_tab}-{secondary_tab}-{category}"
                             self.filtered_scripts[display_category] = filtered_scripts
-        
+
         self.update_tree()
-    
+
     def clear_search(self):
+        print('clear_search')
         """清空搜索"""
         self.search_edit.clear()
+        self.search_text = ''
         self.filtered_scripts = self.current_scripts_data.copy()
         self.is_search = False
         self.update_tree()
-    
-
-
-
 
     # <============================发送模式相关方法==============================>
 
@@ -1142,12 +1150,12 @@ class AssistantMainWindow(QMainWindow):
         if not script_content.strip():
             self.status_label.setText("❌ 话术内容为空")
             return
-        
+
         # 检查目标窗口
         if not hasattr(self, 'target_window') or not self.target_window:
             self.status_label.setText("❌ 请先选择目标窗口")
             return
-            
+
         try:
             if self.api_manager:
                 success = self.api_manager.send_text_to_window(
@@ -1179,55 +1187,52 @@ class AssistantMainWindow(QMainWindow):
                 QMessageBox.warning(self, "警告", "没有检测到目标窗口！")
                 return
             self.send_text_direct(script)
-    
+        if self.is_search:
+            self.is_search = False
+            self.clear_search()
+
     def paste_to_input(self, text: str):
         """粘贴到输入框"""
         try:
             if self.target_window and not win32gui.IsWindow(self.target_window):
                 self.status_label.setText("目标窗口已关闭")
                 return
-            
+
             if self.target_window:
                 win32gui.ShowWindow(self.target_window, win32con.SW_RESTORE)
                 win32gui.SetForegroundWindow(self.target_window)
                 time.sleep(0.2)
-            
+
             pyperclip.copy(text)
             pyautogui.hotkey('ctrl', 'v')
             self.status_label.setText("已添加到输入框")
-            
+
         except Exception as e:
             self.status_label.setText(f"添加失败: {str(e)}")
-    
+
     def send_text_direct(self, text: str):
         """直接发送文本"""
         try:
             if self.target_window and not win32gui.IsWindow(self.target_window):
                 self.status_label.setText("目标窗口已关闭")
                 return
-            
+
             if self.target_window:
                 win32gui.ShowWindow(self.target_window, win32con.SW_RESTORE)
                 win32gui.SetForegroundWindow(self.target_window)
                 time.sleep(0.2)
-            
+
             pyperclip.copy(text)
             pyautogui.hotkey('ctrl', 'v')
             time.sleep(0.1)
             pyautogui.press('enter')
             self.status_label.setText("已直接发送")
-            
+
         except Exception as e:
             self.status_label.setText(f"发送失败: {str(e)}")
-    
-   
-
-
-
-
 
     # <============================权限控制相关方法==============================>
-            
+
     def get_user_permissions(self) -> Dict[str, bool]:
         """获取用户权限"""
         # 这里可以根据实际需求从API或配置中获取用户权限
@@ -1237,7 +1242,7 @@ class AssistantMainWindow(QMainWindow):
             'add_category': True,
             'add_script': True
         }
-        
+
         # 如果有登录用户，可以根据用户角色返回不同权限
         if hasattr(self, 'current_user') and self.current_user:
             user_role = getattr(self.current_user, 'role', 'user')
@@ -1259,11 +1264,8 @@ class AssistantMainWindow(QMainWindow):
                     'add_category': False,
                     'add_script': True
                 }
-        
+
         return default_permissions
-        
-
-
 
     # <============================登陆/登出相关方法==============================>
 
@@ -1279,32 +1281,32 @@ class AssistantMainWindow(QMainWindow):
             if reply == QMessageBox.Yes:
                 self.logout_user()
             return
-        
+
         # 显示登录对话框
         from components.Login_dialog import show_login_dialog
         result = show_login_dialog(self, self._handle_login)
-    
+
     def _handle_login(self, username: str, password: str) -> bool:
         """处理登录逻辑"""
         try:
             if not self.api_manager:
                 QMessageBox.critical(self, "登录失败", "API服务不可用")
                 return False
-            
+
             result = self.api_manager.login(username, password)
             if result.get('success'):
                 self.current_user_id = result.get('user_id') or username
                 self.is_logged_in = True
-                
+
                 # 同步云端数据
                 self.sync_cloud_data()
-                
+
                 # 保存配置
                 self.save_config()
-                
+
                 # 更新界面
                 self.update_login_status()
-                
+
                 QMessageBox.information(self, "登录成功", f"欢迎回来，{username}！")
                 return True
             else:
@@ -1313,16 +1315,16 @@ class AssistantMainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "登录失败", f"登录时发生错误: {str(e)}")
             return False
-    
+
     def logout_user(self):
         """用户登出"""
         try:
             if self.api_manager:
                 self.api_manager.logout()
-            
+
             self.current_user_id = None
             self.is_logged_in = False
-            
+
             # 重新初始化数据适配器
             self.data_adapter = DataAdapter(
                 api_manager=self.api_manager,
@@ -1330,31 +1332,28 @@ class AssistantMainWindow(QMainWindow):
                 config_file=self.config_file,
                 user_id=0
             )
-            
+
             # 重新加载数据
             self.load_data_from_adapter()
             self.update_all_ui()
             self.update_login_status()
-            
+
             # 保存配置
             self.save_config()
-            
+
             self.status_label.setText("已登出")
         except Exception as e:
             QMessageBox.critical(self, "登出失败", f"登出时发生错误: {str(e)}")
 
-
-
-
     # <============================设置功能相关方法==============================>
-    
+
     def show_settings_menu(self):
         """显示设置菜单（整合了原菜单栏功能）"""
         menu = QMenu(self)
-        
+
         # 发送模式子菜单
         send_mode_menu = menu.addMenu("发送模式")
-        
+
         modes = ["直接发送", "添加到输入框", "添加到剪贴板"]
         for mode in modes:
             action = QAction(mode, self)
@@ -1362,55 +1361,55 @@ class AssistantMainWindow(QMainWindow):
             action.setChecked(mode == self.send_mode)
             action.triggered.connect(lambda checked, m=mode: self.set_send_mode(m))
             send_mode_menu.addAction(action)
-        
+
         menu.addSeparator()
-        
+
         # 文件管理
         import_action = QAction("导入数据", self)
         import_action.triggered.connect(self.import_data)
         menu.addAction(import_action)
-        
+
         export_action = QAction("导出数据", self)
         export_action.triggered.connect(self.export_data)
         menu.addAction(export_action)
-        
+
         # 云端数据管理
         if self.is_logged_in:
             menu.addSeparator()
-            
+
             upload_action = QAction("上传数据", self)
             upload_action.triggered.connect(self.upload_data_to_cloud)
             menu.addAction(upload_action)
-            
+
             download_action = QAction("拉取数据", self)
             download_action.triggered.connect(self.download_data_from_cloud)
             menu.addAction(download_action)
-        
+
         menu.addSeparator()
-        
+
         # 退出
         exit_action = QAction("退出", self)
         exit_action.triggered.connect(self.close)
         menu.addAction(exit_action)
-        
+
         # 显示菜单
         menu.exec(self.sender().mapToGlobal(QPoint(0, self.sender().height())))
-    
+
     def set_send_mode(self, mode: str):
         """设置发送模式"""
         self.send_mode = mode
         self.save_config()
         self.status_label.setText(f"发送模式: {mode}")
-    
+
     def import_data(self):
         """导入数据"""
         from PySide6.QtWidgets import QFileDialog
-        
+
         file_path, _ = QFileDialog.getOpenFileName(
             self, "选择要导入的文件", "",
             "Excel文件 (*.xlsx *.xls);;CSV文件 (*.csv);;JSON文件 (*.json);;所有文件 (*.*)"
         )
-        
+
         if file_path and self.data_adapter:
             try:
                 success = self.data_adapter.import_data_from_file(file_path)
@@ -1422,16 +1421,16 @@ class AssistantMainWindow(QMainWindow):
                     QMessageBox.critical(self, "导入失败", "数据导入失败，请检查文件格式！")
             except Exception as e:
                 QMessageBox.critical(self, "导入失败", f"导入时发生错误: {str(e)}")
-    
+
     def export_data(self):
         """导出数据"""
         from PySide6.QtWidgets import QFileDialog
-        
+
         file_path, selected_filter = QFileDialog.getSaveFileName(
             self, "选择导出位置", "",
             "Excel文件 (*.xlsx);;CSV文件 (*.csv);;JSON文件 (*.json)"
         )
-        
+
         if file_path and self.data_adapter:
             try:
                 # 根据选择的过滤器确定格式
@@ -1441,7 +1440,7 @@ class AssistantMainWindow(QMainWindow):
                     file_format = "csv"
                 else:
                     file_format = "json"
-                
+
                 success = self.data_adapter.export_data_to_file(file_path, file_format)
                 if success:
                     QMessageBox.information(self, "导出成功", f"数据已导出到: {file_path}")
@@ -1449,29 +1448,29 @@ class AssistantMainWindow(QMainWindow):
                     QMessageBox.critical(self, "导出失败", "数据导出失败！")
             except Exception as e:
                 QMessageBox.critical(self, "导出失败", f"导出时发生错误: {str(e)}")
-    
+
     def upload_data_to_cloud(self):
         """上传数据到云端"""
         try:
             if not self.is_logged_in or not self.current_user_id:
                 QMessageBox.warning(self, "警告", "请先登录后再上传数据！")
                 return
-            
+
             if not self.api_manager:
                 QMessageBox.critical(self, "错误", "API服务不可用")
                 return
-            
+
             reply = QMessageBox.question(
                 self, "确认上传",
                 "确定要将本地数据上传到云端吗？\n这将覆盖云端的现有数据。",
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No
             )
-            
+
             if reply == QMessageBox.Yes:
                 self.data_adapter.api_manager = self.api_manager
                 self.data_adapter.user_id = self.current_user_id
-                
+
                 success = self.data_adapter.push_local_scripts_data(data=self.scripts_data)
                 if success:
                     QMessageBox.information(self, "上传成功", "数据已成功上传到云端！")
@@ -1482,25 +1481,25 @@ class AssistantMainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "上传失败", f"上传时发生错误: {str(e)}")
             self.status_label.setText(f"上传失败: {str(e)}")
-    
+
     def download_data_from_cloud(self):
         """从云端下载数据"""
         try:
             if not self.is_logged_in or not self.current_user_id:
                 QMessageBox.warning(self, "警告", "请先登录后再下载数据！")
                 return
-            
+
             if not self.api_manager:
                 QMessageBox.critical(self, "错误", "API服务不可用")
                 return
-            
+
             reply = QMessageBox.question(
                 self, "确认下载",
                 "确定要从云端下载数据吗？\n这将覆盖本地的现有数据。",
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No
             )
-            
+
             if reply == QMessageBox.Yes:
                 success = self.data_adapter.load_user_data()
                 if success:
@@ -1514,27 +1513,24 @@ class AssistantMainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "下载失败", f"下载时发生错误: {str(e)}")
             self.status_label.setText(f"下载失败: {str(e)}")
-    
-   
-
 
     # <============================手动该改变窗口大小相关方法==============================>
-    
+
     def get_resize_direction(self, pos):
         """获取鼠标位置对应的调整大小方向"""
         rect = self.rect()
         margin = self.resize_margin
-        
+
         # 检查是否在边缘区域
         left = pos.x() <= margin
         right = pos.x() >= rect.width() - margin
         top = pos.y() <= margin
         bottom = pos.y() >= rect.height() - margin
-        
+
         # 调试信息
         # print(f"鼠标位置: {pos.x()}, {pos.y()}, 窗口大小: {rect.width()}x{rect.height()}")
         # print(f"边缘检测: left={left}, right={right}, top={top}, bottom={bottom}")
-        
+
         if top and left:
             return "top_left"
         elif top and right:
@@ -1553,11 +1549,11 @@ class AssistantMainWindow(QMainWindow):
             return "right"
         else:
             return None
-    
+
     def update_cursor(self, direction):
         """根据调整大小方向更新鼠标光标"""
         from PySide6.QtCore import Qt
-        
+
         cursor_map = {
             "top_left": Qt.CursorShape.SizeFDiagCursor,
             "top_right": Qt.CursorShape.SizeBDiagCursor,
@@ -1568,16 +1564,16 @@ class AssistantMainWindow(QMainWindow):
             "left": Qt.CursorShape.SizeHorCursor,
             "right": Qt.CursorShape.SizeHorCursor,
         }
-        
+
         if direction in cursor_map:
             self.setCursor(cursor_map[direction])
         else:
             self.setCursor(Qt.CursorShape.ArrowCursor)
-    
+
     def enterEvent(self, event):
         """鼠标进入窗口事件"""
         super().enterEvent(event)
-    
+
     def leaveEvent(self, event):
         """鼠标离开窗口事件"""
         self.setCursor(Qt.CursorShape.ArrowCursor)
@@ -1588,7 +1584,7 @@ class AssistantMainWindow(QMainWindow):
         if event.button() == Qt.MouseButton.LeftButton:
             pos = event.position().toPoint()
             self.resize_direction = self.get_resize_direction(pos)
-            
+
             if self.resize_direction:
                 # 开始调整大小
                 self.resize_start_pos = event.globalPosition().toPoint()
@@ -1596,7 +1592,7 @@ class AssistantMainWindow(QMainWindow):
             else:
                 # 开始拖拽窗口
                 self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            
+
             event.accept()
 
     def mouseMoveEvent(self, event):
@@ -1608,9 +1604,10 @@ class AssistantMainWindow(QMainWindow):
             elif self.drag_position:
                 # 拖拽窗口
                 # 如果启用了吸附功能，暂时禁用它
-                if hasattr(self, 'dock_manager') and self.dock_manager and hasattr(self, 'dock_enabled') and self.dock_enabled:
+                if hasattr(self, 'dock_manager') and self.dock_manager and hasattr(self,
+                                                                                   'dock_enabled') and self.dock_enabled:
                     self.dock_manager.disable_docking()
-                    
+
                 self.move(event.globalPosition().toPoint() - self.drag_position)
             event.accept()
         else:
@@ -1619,18 +1616,19 @@ class AssistantMainWindow(QMainWindow):
             direction = self.get_resize_direction(pos)
             self.update_cursor(direction)
             event.accept()
-        
+
         # 调用父类方法
         super().mouseMoveEvent(event)
-    
+
     def resize_window(self, global_pos):
         """调整窗口大小"""
-        if not hasattr(self, 'resize_start_pos') or not hasattr(self, 'resize_start_geometry') or not self.resize_direction:
+        if not hasattr(self, 'resize_start_pos') or not hasattr(self,
+                                                                'resize_start_geometry') or not self.resize_direction:
             return
-            
+
         delta = global_pos - self.resize_start_pos
         new_geometry = QRect(self.resize_start_geometry)
-        
+
         if self.resize_direction and "left" in self.resize_direction:
             new_geometry.setLeft(new_geometry.left() + delta.x())
         if self.resize_direction and "right" in self.resize_direction:
@@ -1639,23 +1637,23 @@ class AssistantMainWindow(QMainWindow):
             new_geometry.setTop(new_geometry.top() + delta.y())
         if self.resize_direction and "bottom" in self.resize_direction:
             new_geometry.setBottom(new_geometry.bottom() + delta.y())
-        
+
         # 确保窗口不会太小
         min_width = self.minimumWidth() or 300
         min_height = self.minimumHeight() or 400
-        
+
         if new_geometry.width() < min_width:
             if self.resize_direction and "left" in self.resize_direction:
                 new_geometry.setLeft(new_geometry.right() - min_width)
             else:
                 new_geometry.setRight(new_geometry.left() + min_width)
-                
+
         if new_geometry.height() < min_height:
             if self.resize_direction and "top" in self.resize_direction:
                 new_geometry.setTop(new_geometry.bottom() - min_height)
             else:
                 new_geometry.setBottom(new_geometry.top() + min_height)
-        
+
         self.setGeometry(new_geometry)
 
     def mouseReleaseEvent(self, event):
@@ -1663,34 +1661,33 @@ class AssistantMainWindow(QMainWindow):
         if event.button() == Qt.MouseButton.LeftButton:
             self.drag_position = None
             self.resize_direction = None
-            
+
             # 重置光标
             self.setCursor(Qt.CursorShape.ArrowCursor)
-            
+
             # 如果之前启用了吸附功能，重新启用它
-            if hasattr(self, 'dock_manager') and self.dock_manager and hasattr(self, 'dock_enabled') and self.dock_enabled:
+            if hasattr(self, 'dock_manager') and self.dock_manager and hasattr(self,
+                                                                               'dock_enabled') and self.dock_enabled:
                 if hasattr(self, 'target_window') and self.target_window:
                     self.dock_manager.enable_docking(self.target_window)
-            
+
             event.accept()
-
-
-
 
     # <============================添加功能（话术分类、话术标题、话术内容）==============================>
 
-    def show_add_dialog(self, add_type: str, primary_type: Optional[str] = None, category_name: Optional[str] = None, title_name: Optional[str] = None,script_content: Optional[str] = None):
+    def show_add_dialog(self, add_type: str, primary_type: Optional[str] = None, category_name: Optional[str] = None,
+                        title_name: Optional[str] = None, script_content: Optional[str] = None):
         """显示添加内容弹窗并设置默认类型"""
         try:
             # 获取用户权限
             user_permissions = self.get_user_permissions()
-            
+
             # 创建并显示添加弹窗
             add_dialog = AddDialog(self.scripts_data, user_permissions, self)
-            
+
             # 设置默认类型
             add_dialog.set_add_mode(add_type, primary_type, category_name, title_name, script_content)
-            
+
             # 连接新增信号
             if add_type == 'category':
                 add_dialog.category_added_signal.connect(self.add_script_category_callback)
@@ -1704,15 +1701,14 @@ class AssistantMainWindow(QMainWindow):
             # 连接弹窗关闭信号
             add_dialog.accepted.connect(lambda: self.status_label.setText("✅ 内容添加成功"))
             add_dialog.rejected.connect(lambda: self.status_label.setText("❌ 取消添加"))
-            
+
             # 显示非模态弹窗
             add_dialog.show()
             add_dialog.raise_()
             add_dialog.activateWindow()
-                
+
         except Exception as e:
             QMessageBox.critical(self, "错误", f"显示添加弹窗失败：{str(e)}")
-
 
     def add_script_category_callback(self, script_type_name: str, category_name: str):
         """处理添加话术分类"""
@@ -1720,14 +1716,14 @@ class AssistantMainWindow(QMainWindow):
             if script_type_name not in self.scripts_data:
                 QMessageBox.warning(self, "错误", f"话术类型 '{script_type_name}' 不存在！")
                 return
-                
+
             if category_name in self.scripts_data[script_type_name]:
                 QMessageBox.warning(self, "警告", f"话术分类 '{category_name}' 已存在！")
                 return
-                
+
             # 添加新的话术分类（正确初始化为空字典）
             self.scripts_data[script_type_name][category_name] = {}
-            
+
             # 当添加的话术分类与当前选中的话术类型一致时更新
             if script_type_name == self.current_primary_tab:
                 # 更新话术分类
@@ -1735,10 +1731,9 @@ class AssistantMainWindow(QMainWindow):
 
             # 保存数据
             self.save_scripts()
-            
+
         except Exception as e:
             QMessageBox.critical(self, "错误", f"添加话术分类失败：{str(e)}")
-
 
     def add_script_title_callback(self, script_type_name: str, category_name: str, title_name: str):
         """处理添加话术标题"""
@@ -1746,18 +1741,18 @@ class AssistantMainWindow(QMainWindow):
             if script_type_name not in self.scripts_data:
                 QMessageBox.warning(self, "错误", f"话术类型 '{script_type_name}' 不存在！")
                 return
-                
+
             if category_name not in self.scripts_data[script_type_name]:
                 QMessageBox.warning(self, "错误", f"话术分类 '{category_name}' 不存在！")
                 return
-                
+
             if title_name in self.scripts_data[script_type_name][category_name]:
                 QMessageBox.warning(self, "警告", f"话术标题 '{title_name}' 已存在！")
                 return
-                
+
             # 添加新的话术标题（初始化为空列表）
             self.scripts_data[script_type_name][category_name][title_name] = []
-            
+
             # 当添加的话术标题与当前展示页面一致时更新
             if script_type_name == self.current_primary_tab and category_name == self.current_secondary_tab and self.is_search == False:
                 # 更新话术分类
@@ -1768,53 +1763,52 @@ class AssistantMainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "错误", f"添加话术标题失败：{str(e)}")
 
-
     def add_script_content_callback(self, script_type_name: str, category_name: str, title_name: str, content: str):
         """添加话术内容回调"""
         try:
             if script_type_name not in self.scripts_data:
                 QMessageBox.warning(self, "错误", f"话术类型 '{script_type_name}' 不存在！")
                 return
-                
+
             if category_name not in self.scripts_data[script_type_name]:
                 QMessageBox.warning(self, "错误", f"话术分类 '{category_name}' 不存在！")
                 return
-                
+
             if title_name not in self.scripts_data[script_type_name][category_name]:
                 QMessageBox.warning(self, "错误", f"话术标题 '{title_name}' 不存在！")
                 return
-                
+
             # 添加新的话术内容
             self.scripts_data[script_type_name][category_name][title_name].append(content)
-            
+
             # 当添加的话术标题与当前展示页面一致时更新
             if script_type_name == self.current_primary_tab and category_name == self.current_secondary_tab and self.is_search == False:
                 # 更新当前话术展示数据,并更新树形结构
                 self.load_current_scripts_data()
+            elif self.is_search:
+                self.on_search_changed(self.search_text)
 
             # 保存数据
             self.save_scripts()
-            
+
         except Exception as e:
             QMessageBox.critical(self, "错误", f"添加话术内容失败：{str(e)}")
 
+    # <============================修改功能（话术分类、话术标题、话术内容）==============================>
 
-
-
-    #<============================修改功能（话术分类、话术标题、话术内容）==============================>
-
-    def show_edit_dialog(self, edit_type: str, old_value: str, primary_type: Optional[str] = None, category_name: Optional[str] = None, title_name: Optional[str] = None):
+    def show_edit_dialog(self, edit_type: str, old_value: str, primary_type: Optional[str] = None,
+                         category_name: Optional[str] = None, title_name: Optional[str] = None):
         """显示编辑对话框"""
         try:
             # 获取用户权限
             user_permissions = self.get_user_permissions()
-            
+
             # 创建编辑对话框
             edit_dialog = AddDialog(self.scripts_data, user_permissions, self, edit_mode=True)
-            
+
             # 设置编辑模式
             edit_dialog.set_edit_mode(edit_type, old_value, primary_type, category_name, title_name)
-            
+
             # 连接编辑信号
             if edit_type == 'category':
                 edit_dialog.category_edited_signal.connect(self.edit_script_category_callback)
@@ -1822,19 +1816,18 @@ class AssistantMainWindow(QMainWindow):
                 edit_dialog.title_edited_signal.connect(self.edit_script_title_callback)
             elif edit_type == 'script':
                 edit_dialog.content_edited_signal.connect(self.edit_script_content_callback)
-            
+
             # 连接弹窗关闭信号
             edit_dialog.accepted.connect(lambda: self.status_label.setText("✅ 编辑成功"))
             edit_dialog.rejected.connect(lambda: self.status_label.setText("❌ 取消编辑"))
-            
-           # 显示非模态弹窗
+
+            # 显示非模态弹窗
             edit_dialog.show()
             edit_dialog.raise_()
             edit_dialog.activateWindow()
-            
+
         except Exception as e:
             QMessageBox.critical(self, "错误", f"显示编辑对话框失败：{str(e)}")
-
 
     def edit_script_category_callback(self, primary_type: str, old_name: str, new_name: str):
         """编辑话术分类"""
@@ -1842,7 +1835,7 @@ class AssistantMainWindow(QMainWindow):
             if new_name not in self.scripts_data.get(primary_type, {}):
                 # 重命名分类
                 new_dict = {}
-                for key,value in self.scripts_data[primary_type].items():
+                for key, value in self.scripts_data[primary_type].items():
                     if key == old_name:
                         new_dict[new_name] = value
                     else:
@@ -1853,7 +1846,7 @@ class AssistantMainWindow(QMainWindow):
                 if primary_type == self.current_primary_tab:
                     if self.current_secondary_tab == old_name:
                         self.current_secondary_tab = new_name
-                
+
                 # 当编辑的话术分类与展示页面一致时更新
                 if primary_type == self.current_primary_tab:
                     # 更新话术分类
@@ -1865,22 +1858,21 @@ class AssistantMainWindow(QMainWindow):
                 QMessageBox.warning(self, "警告", "话术分类名称已存在！")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"编辑话术分类失败: {str(e)}")
-    
 
     def edit_script_title_callback(self, primary_type: str, script_category: str, old_name: str, new_name: str):
         """编辑话术标题"""
         try:
             if new_name not in self.scripts_data[primary_type][script_category]:
-                
+
                 # 重命名标题
                 new_dict = {}
-                for key,value in self.scripts_data[primary_type][script_category].items():
+                for key, value in self.scripts_data[primary_type][script_category].items():
                     if key == old_name:
                         new_dict[new_name] = value
                     else:
                         new_dict[key] = value
                 self.scripts_data[primary_type][script_category] = new_dict
-                
+
                 # 当编辑的话术标题与展示页面一致时更新
                 if primary_type == self.current_primary_tab and script_category == self.current_secondary_tab:
                     # 更新当前话术展示数据,并更新树形结构
@@ -1893,8 +1885,8 @@ class AssistantMainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "错误", f"编辑话术标题失败: {str(e)}")
 
-
-    def edit_script_content_callback(self, primary_type: str, category_name: str,title_name:str, old_name: str, new_name: str):
+    def edit_script_content_callback(self, primary_type: str, category_name: str, title_name: str, old_name: str,
+                                     new_name: str):
         """编辑话术内容"""
         try:
             if new_name not in self.scripts_data[primary_type][category_name][title_name]:
@@ -1906,21 +1898,19 @@ class AssistantMainWindow(QMainWindow):
                     else:
                         new_list.append(value)
                 self.scripts_data[primary_type][category_name][title_name] = new_list
-                
+
                 # 当编辑的话术标题与展示页面一致时更新
                 if primary_type == self.current_primary_tab and category_name == self.current_secondary_tab and self.is_search == False:
                     # 更新当前话术展示数据,并更新树形结构
                     self.load_current_scripts_data()
-
+                elif self.is_search:
+                    self.on_search_changed(self.search_text)
                 # 保存数据
                 self.save_scripts()
             else:
                 QMessageBox.warning(self, "警告", "话术内容已存在！")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"编辑话术内容失败: {str(e)}")
-
-
-
 
     # <============================删除功能（话术分类、话术标题、话术内容）==============================>
 
@@ -1929,19 +1919,19 @@ class AssistantMainWindow(QMainWindow):
         if len(self.scripts_data[self.current_primary_tab]) <= 1:
             QMessageBox.warning(self, "警告", "至少需要保留一个话术分类！")
             return
-        
+
         reply = QMessageBox.question(
             self, "确认删除",
             f"确定要删除话术分类 '{tab_name}' 及其所有话术吗？",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
-        
+
         if reply == QMessageBox.Yes:
             try:
                 if tab_name in self.scripts_data[self.current_primary_tab]:
                     del self.scripts_data[self.current_primary_tab][tab_name]
-                
+
                 if self.current_secondary_tab == tab_name:
                     self.current_secondary_tab = list(self.scripts_data[self.current_primary_tab].keys())[0]
                     self.update_secondary_tabs()
@@ -1951,57 +1941,63 @@ class AssistantMainWindow(QMainWindow):
                 self.save_scripts()
             except Exception as e:
                 QMessageBox.critical(self, "错误", f"删除失败: {str(e)}")
-    
 
     def delete_script_title(self, category: str):
+        print('category', category)
         """删除分类标题"""
         reply = QMessageBox.question(
-            self, "确认删除", 
+            self, "确认删除",
             f"确定要删除分类 '{category}' 及其所有话术吗？",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
-        
-        if reply == QMessageBox.Yes:
-            if category in self.current_scripts_data:
-                del self.current_scripts_data[category]
-                self.save_scripts()
-                self.filtered_scripts = self.current_scripts_data.copy()
-                self.update_tree()
-                self.status_label.setText(f"已删除分类: {category}")
-    
-   
-    def delete_script(self, data:Dict[str, Any]):
-        """删除话术"""
-        print('data',data)
-        script = data.get("content", "")
-        title = data.get("title", "")
-        print('title',title)
-        print('script',script)
-        reply = QMessageBox.question(
-            self, "确认删除",
-            f"确定要删除话术:\n{script[:100]}{'...' if len(script) > 100 else ''}",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        
+
         if reply == QMessageBox.Yes:
             try:
                 if self.is_search:
-                    pass
-                else:    
-                    print('这里有问题！！！！')
-                    print('self.filtered_scripts',self.filtered_scripts)
-                    self.filtered_scripts[title].remove(script)
-                    self.scripts_data[self.current_primary_tab][self.current_secondary_tab][title].remove(script)
-                    self.save_scripts()
-                    self.update_tree()
-            except (ValueError, KeyError):
+                    list = category.split('-')
+                    type = list[0]
+                    category_name = list[1]
+                    title = list[2]
+                    del self.filtered_scripts[category]
+                    del self.scripts_data[type][category_name][title]
+                else:
+                    if category in self.scripts_data[self.current_primary_tab][self.current_secondary_tab]:
+                        del self.filtered_scripts[category]
+                        del self.scripts_data[self.current_primary_tab][self.current_secondary_tab][category]
+                self.save_scripts()
+                self.update_tree()
+            except Exception as e:
+                print('ValueError', e)
                 QMessageBox.warning(self, "错误", "找不到要删除的话术！")
 
+    def delete_script(self, data: Dict[str, Any]):
+        """删除话术"""
+        content = data.get("content", "")
+        title = data.get("title", "")
+        reply = QMessageBox.question(
+            self, "确认删除",
+            f"确定要删除话术:\n{content[:100]}{'...' if len(content) > 100 else ''}",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
 
-
-
+        if reply == QMessageBox.Yes:
+            try:
+                if self.is_search:
+                    list = title.split('-')
+                    type = list[0]
+                    category = list[1]
+                    title_name = list[2]
+                    self.filtered_scripts[title].remove(content)
+                    self.scripts_data[type][category][title_name].remove(content)
+                else:
+                    self.scripts_data[self.current_primary_tab][self.current_secondary_tab][title].remove(content)
+                self.save_scripts()
+                self.update_tree()
+            except Exception as e:
+                print('ValueError', e)
+                QMessageBox.warning(self, "错误", "找不到要删除的话术！")
 
     # <============================窗口默认事件==============================>
 
@@ -2010,34 +2006,34 @@ class AssistantMainWindow(QMainWindow):
         # 停止监控线程
         if self.window_monitor:
             self.window_monitor.stop_monitoring()
-        
+
         # 保存数据
         self.save_scripts()
         self.save_config()
-        
+
         event.accept()
 
 
 def main():
     """主函数"""
     app = QApplication(sys.argv)
-    
+
     # 设置应用程序信息
     app.setApplicationName("聚雍宝")
     app.setApplicationVersion("2.0")
     app.setOrganizationName("聚雍宝团队")
-    
+
     # 应用优化主题（推荐使用优化现代主题）
     try:
         theme_manager.apply_theme(app, "modern_optimized")
         print("✅ 已应用优化现代主题")
     except Exception as e:
         print(f"⚠️ 主题加载失败: {e}")
-    
+
     # 创建主窗口
     window = AssistantMainWindow()
     window.show()
-    
+
     # 运行应用程序
     sys.exit(app.exec())
 

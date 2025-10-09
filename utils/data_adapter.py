@@ -3,7 +3,7 @@ import os
 from typing import Dict, Optional, Any
 import threading
 from utils.api_manager import APIManager
-import utils as utils
+import utils.utils as utils
 import utils.constants as constants
 
 json_file_lock = threading.Lock()
@@ -12,7 +12,7 @@ json_file_lock = threading.Lock()
 class DataAdapter:
     """数据适配器 - 用户登录后获取云端数据，获取不到则使用默认数据"""
 
-    def __init__(self, api_manager: Optional[APIManager] = APIManager):
+    def __init__(self, api_manager: Optional[APIManager] = None):
         self.api_manager = api_manager
         self.scripts_file = constants.real_scripts_rel_path
         self.config_file = constants.real_config_rel_path
@@ -32,16 +32,17 @@ class DataAdapter:
         self.load_user_data()
 
     # ==================== 核心数据本地操作 ====================
-    def get_local_scripts_data(self)-> Dict[str, Any]: 
+    def get_local_scripts_data(self) -> Dict[str, Any]:
         """读取本地话术数据"""
+        scripts_data = []
         if os.path.exists(self.scripts_file):
             with open(self.scripts_file, 'r', encoding='utf-8') as f:
                 self.scripts_data = json.load(f)
         else:
-            self.scripts_data = utils.init_scripts_data()
-        
+            scripts_data = utils.init_scripts_data()
+            self.scripts_data = self.set_data_structure(scripts_data)
         return self.scripts_data
-    
+
     def get_local_config_data(self) -> Dict[str, Any]:
         """读取本地配置数据"""
         if os.path.exists(self.config_file):
@@ -49,7 +50,6 @@ class DataAdapter:
                 self.config_data = json.load(f)
         else:
             self.config_data = utils.init_config_data()
-        
         return self.config_data
 
     def get_local_data(self):
@@ -68,7 +68,7 @@ class DataAdapter:
             print(f"保存本地数据失败: {e}")
             return False
 
-    def save_local_config_data(self, config)-> bool:
+    def save_local_config_data(self, config) -> bool:
         """将配置保存到本地json文件"""
         try:
             self.config_data = config
@@ -82,6 +82,45 @@ class DataAdapter:
             print(f"保存本地数据失败: {e}")
             return False
 
+    def set_data_structure(self, data: list) -> list:
+        script_data = []
+        for type in data:
+            print('type', type)
+            type_dict = {
+                "name": type.get('name', ''),
+                "type_id": type.get('id', 0),
+                "data": []
+            }
+            for category in type.get('data', []):
+                level_one_category_dict = {
+                    "name": category.get('name', ''),
+                    "type_id": type.get('id', 0),
+                    "level_one_category_id": category.get('id', 0),
+                    "data": []
+                }
+                for title in category.get('data', []):
+                    level_two_category_dict = {
+                        "name": title.get('name', ''),
+                        "type_id": type.get('id', 0),
+                        "level_one_category_id": category.get('id', 0),
+                        "level_two_category_id": title.get('id', 0),
+                        "data": []
+                    }
+                    for script in title.get('data', []):
+                        script_dict = {
+                            "content": script.get('content', ''),
+                            "title": script.get('title', ''),
+                            "type_id": type.get('id', 0),
+                            "level_one_category_id": category.get('id', 0),
+                            "level_two_category_id": title.get('id', 0),
+                            "script_id": script.get('id', 0)
+                        }
+                        level_two_category_dict["data"].append(script_dict)
+                    level_one_category_dict['data'].append(level_two_category_dict)
+                type_dict['data'].append(level_one_category_dict)
+            script_data.append(type_dict)
+        return script_data
+
     # ==================== 核心数据云端操作操作 ====================
     def load_user_data(self):
         """加载用户数据：优先云端，获取不到则使用默认数据"""
@@ -90,7 +129,9 @@ class DataAdapter:
             try:
                 response = self.api_manager.get_user_data(self.user_id)
                 if response.get('code') == 200:
-                    self.scripts_data = response.get('scripts_data', {})
+                    scripts_data = response.get('scripts_data', {})
+                    self.scripts_data = self.set_data_structure(scripts_data)
+
                     self.config_data = response.get('config_data', {})
                     print(f"已加载用户 {self.user_id} 的云端数据")
                     with json_file_lock:  # 自动管理锁的获取/释放
@@ -110,7 +151,7 @@ class DataAdapter:
         else:
             # 获取不到云端数据，使用本地数据
             self.get_local_data()
-            print(f"已为用户 {self.user_id} 初始化默认数据")
+            # print(f"已为用户 {self.user_id} 初始化默认数据")
 
     def push_local_scripts_data(self, data: Dict[str, Any] = None) -> bool:
         """话术数据上传到云端"""

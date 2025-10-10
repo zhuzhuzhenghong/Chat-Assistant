@@ -1,5 +1,5 @@
 """
-聚雍宝 - PySide6版本
+秒回 - PySide6版本
 智能客服助手 - 现代化界面版本
 """
 from symbol import compound_stmt
@@ -212,7 +212,7 @@ class WindowMonitor(QThread):
                 if current_window and current_window != self.my_window_handle:
                     try:
                         title = win32gui.GetWindowText(current_window)
-                        if title and title.strip() and "聚雍宝" not in title:
+                        if title and title.strip() and "秒回" not in title:
                             self.window_changed.emit(current_window, title.strip())
                     except:
                         pass
@@ -352,7 +352,7 @@ class AssistantMainWindow(QMainWindow):
         # 当前选中Tab数据
         self.current_type_tab_data = {}
         self.current_level_one_category_data = {}
-        self.current_level_two_category_data = {}
+        self.current_level_two_category_data = []
 
         # 当前选中的tab下标
         self.current_type_tab_index = 0
@@ -408,7 +408,7 @@ class AssistantMainWindow(QMainWindow):
 
     def setup_window(self):
         """设置窗口属性"""
-        self.setWindowTitle("聚雍宝")
+        self.setWindowTitle("秒回")
         self.setMinimumSize(300, 500)
 
         # 设置无边框窗口
@@ -432,7 +432,7 @@ class AssistantMainWindow(QMainWindow):
             try:
                 if win32gui.IsWindowVisible(hwnd):
                     title = win32gui.GetWindowText(hwnd)
-                    if "聚雍宝" in title:
+                    if "秒回" in title:
                         self.window_monitor.my_window_handle = hwnd
                         return False
             except:
@@ -479,7 +479,7 @@ class AssistantMainWindow(QMainWindow):
                 try:
                     if win32gui.IsWindowVisible(hwnd):
                         title = win32gui.GetWindowText(hwnd)
-                        if "聚雍宝" in title:
+                        if "秒回" in title:
                             if self.window_monitor:
                                 self.window_monitor.my_window_handle = hwnd
                             return False
@@ -535,33 +535,30 @@ class AssistantMainWindow(QMainWindow):
                 # 使用默认数据
                 self.scripts_data = utils.init_scripts_data()
 
-            for tab_data in self.scripts_data:
-                dict = {
-                    'name': tab_data['name'],
-                    'type_id': tab_data['type_id']
-                }
-                self.primary_tab_dict[tab_data['type_id']] = dict
-
             # 确保当前Tab存在
             matching_indices = [i for i, item in enumerate(self.scripts_data)
                                 if item.get('type_id') == self.current_type_tab_id]
             if len(matching_indices) > 0:
                 index = matching_indices[0]
-                self.current_type_tab_name = self.scripts_data[index]['name']
-                self.current_type_tab_id = self.scripts_data[index]['type_id']
-                self.current_type_tab_data = self.scripts_data[index].copy()
 
-                self.current_level_one_category_name = self.scripts_data[index]['data'][0]['name']
-                self.current_level_one_category_id = self.scripts_data[index]['data'][0]['level_one_category_id']
-                self.current_level_one_category_data = self.scripts_data[index]['data'][0].copy()
+                # 更新话术类型tab
+                self.update_current_script_type_tab_data(self.scripts_data[index])
+                # 更新话术类型dict数据
+                self.update_current_script_type_data_dict(self.scripts_data)
+                # 更新一级分类tab
+                self.update_current_level_one_category_tab_data(self.scripts_data[index]['data'][0])
+                # 更新一级分类dict数据
+                self.update_current_level_one_category_dict(self.scripts_data[0]['data'])
+
             else:
-                self.current_type_tab_name = self.scripts_data[0]['name']
-                self.current_type_tab_id = self.scripts_data[0]['type_id']
-                self.current_type_tab_data = self.scripts_data[0].copy()
-
-                self.current_level_one_category_name = self.scripts_data[0]['data'][0]['name']
-                self.current_level_one_category_id = self.scripts_data[0]['data'][0]['level_one_category_id']
-                self.current_level_one_category_data = self.scripts_data[0]['data'][0].copy()
+                # 更新话术类型tab
+                self.update_current_script_type_tab_data(self.scripts_data[0])
+                # 更新话术类型dict数据
+                self.update_current_script_type_data_dict(self.scripts_data)
+                # 更新一级分类tab
+                self.update_current_level_one_category_tab_data(self.scripts_data[0]['data'][0])
+                # 更新一级分类dict数据
+                self.update_current_level_one_category_dict(self.scripts_data[0]['data'])
 
             # # 加载配置
             # config = self.data_adapter.get_config_data()
@@ -613,15 +610,7 @@ class AssistantMainWindow(QMainWindow):
         if hasattr(self, 'scripts_data'):
             # return self.scripts_data.get(self.current_type_tab_name, {}).get(self.current_level_one_category_name, {})
             if len(self.current_level_one_category_data.get('data', [])):
-                for level_two_category_data in self.current_level_one_category_data['data']:
-                    dict = {
-                        'name': level_two_category_data['name'],
-                        'type_id': level_two_category_data['type_id'],
-                        'level_one_category_id': level_two_category_data['level_one_category_id'],
-                        'level_two_category_id': level_two_category_data['level_two_category_id']
-                    }
-                    self.level_two_category_dict[level_two_category_data['level_two_category_id']] = dict
-                print('self.level_two_category_dict', self.level_two_category_dict)
+                self.update_level_two_category_data_dict(self.current_level_one_category_data['data'])
                 return self.current_level_one_category_data['data']
         return []
 
@@ -637,7 +626,6 @@ class AssistantMainWindow(QMainWindow):
         """保存话术数据"""
         try:
             if hasattr(self, 'scripts_data') and self.data_adapter:
-                print('self.scripts_data=============>',self.scripts_data)
                 self.data_adapter.scripts_data = self.scripts_data
                 self.data_adapter.save_local_scripts_data()
         except Exception as e:
@@ -658,6 +646,61 @@ class AssistantMainWindow(QMainWindow):
                 self.data_adapter.save_local_config_data(config)
         except Exception as e:
             print(f'保存配置失败: {e}')
+
+    # <============================处理基础数据方法==============================>
+    def update_current_script_type_tab_data(self, data):
+        '''更新当前选中的话术类型数据'''
+        self.current_type_tab_name = data['name']
+        self.current_type_tab_id = data['type_id']
+        self.current_type_tab_data = data.copy()
+
+    def update_current_level_one_category_tab_data(self, data):
+        '''更新当前选中的一级分类数据'''
+        self.current_level_one_category_name = data['name']
+        self.current_level_one_category_id = data['level_one_category_id']
+        self.current_level_one_category_data = data.copy()
+        # 更新二级分类数据
+        self.update_level_two_category_tab_data(data['data'])
+
+    def update_level_two_category_tab_data(self, data):
+        '''更新当前选中的二级分类数据'''
+        self.current_level_two_category_data = data
+
+    def update_current_script_type_data_dict(self, data):
+        '''更新话术类型dict数据'''
+        self.primary_tab_dict = {}
+        for tab_data in data:
+            dict = {
+                'name': tab_data['name'],
+                'type_id': tab_data['type_id']
+            }
+            self.primary_tab_dict[tab_data['type_id']] = dict
+        print('self.primary_tab_dict====================>', self.primary_tab_dict)
+
+    def update_current_level_one_category_dict(self, data):
+        '''更新一级分类dict数据'''
+        self.level_one_category_dict = {}
+        for level_one_category_data in data:
+            dict = {
+                'name': level_one_category_data['name'],
+                'type_id': level_one_category_data['type_id'],
+                'level_one_category_id': level_one_category_data['level_one_category_id']
+            }
+            self.level_one_category_dict[level_one_category_data['level_one_category_id']] = dict
+        print('self.level_one_category_dict====================>', self.level_one_category_dict)
+
+    def update_level_two_category_data_dict(self, data):
+        '''更新二级分类dict数据'''
+        self.level_two_category_dict = {}
+        for level_two_category_data in data:
+            dict = {
+                'name': level_two_category_data['name'],
+                'type_id': level_two_category_data['type_id'],
+                'level_one_category_id': level_two_category_data['level_one_category_id'],
+                'level_two_category_id': level_two_category_data['level_two_category_id']
+            }
+            self.level_two_category_dict[level_two_category_data['level_two_category_id']] = dict
+        print('self.level_two_category_dict====================>', self.level_two_category_dict)
 
     # <============================创建界面元素方法==============================>
 
@@ -801,22 +844,26 @@ class AssistantMainWindow(QMainWindow):
         # 清空现有Tab
         self.primary_tab_widget.clear()
         self.primary_tabs.clear()
+
         # 添加新Tab
         if self.scripts_data:
             for type_id, tab_type_attr in self.primary_tab_dict.items():
                 tab_widget = QWidget()
                 tab_widget.setProperty('type_id', type_id)
+
                 self.primary_tabs[type_id] = tab_widget
                 self.primary_tab_widget.addTab(tab_widget, tab_type_attr['name'])
 
             # 选中当前Tab
             idArr = list(self.primary_tab_dict.keys())
+
             if self.current_type_tab_id in idArr:
                 self.current_type_tab_index = idArr.index(self.current_type_tab_id)
                 self.primary_tab_widget.setCurrentIndex(self.current_type_tab_index)
                 self.current_type_tab_data = self.scripts_data[self.current_type_tab_index].copy()
 
-                self.set_level_one_category_dict()
+                self.update_current_level_one_category_dict(self.current_type_tab_data['data'])
+                self.update_secondary_tabs()
             else:
                 print('未找到当前一级tab选中值')
 
@@ -838,9 +885,6 @@ class AssistantMainWindow(QMainWindow):
         # 添加新按钮
         idArr = list(self.primary_tab_dict.keys())
         if self.current_type_tab_id in idArr:
-            # if self.current_type_tab_id in self.primary_tab_dict:
-            # tab_names = list(self.scripts_data[self.current_type_tab_name].keys())
-
             # 按钮参数
             button_height = 24
             button_spacing = 1
@@ -859,7 +903,6 @@ class AssistantMainWindow(QMainWindow):
             for level_one_category_id, level_one_category_attr in self.level_one_category_dict.items():
                 type_id = level_one_category_attr.get('type_id', 0)
                 name = level_one_category_attr.get('name', '')
-                print('name', name)
                 # 创建按钮
                 button = ModernTabButton(name,
                                          level_one_category_id == self.current_level_one_category_id)
@@ -946,7 +989,7 @@ class AssistantMainWindow(QMainWindow):
         """更新树形列表"""
         self.tree_widget.clear()
         # 处理数据结构：话术标题 -> 话术内容列表
-        print('self.filtered_scripts',self.filtered_scripts)
+        print('self.filtered_scripts', self.filtered_scripts)
         for title_data in self.filtered_scripts:
             # 创建分类节点
             category_item = QTreeWidgetItem([f"📁 {title_data['name']}"])
@@ -1046,47 +1089,29 @@ class AssistantMainWindow(QMainWindow):
 
     def on_primary_tab_changed(self, index: int):
         """话术类型Tab切换"""
-        print('on_primary_tab_changed============>111111')
         if index >= 0:
             type_id_arr = list(self.primary_tab_dict.keys())
-            print('type_id_arr', type_id_arr)
+
             # 正常的Tab切换
             if index < len(type_id_arr):
                 type_id = type_id_arr[index]
                 if type_id != self.current_type_tab_id:
+                    self.update_current_script_type_tab_data(self.scripts_data[index])
+                    self.update_current_script_type_data_dict(self.scripts_data)
 
-                    self.current_type_tab_name = self.primary_tab_dict[type_id]['name']
-                    self.current_type_tab_id = type_id
-                    self.current_type_tab_data = self.scripts_data[index].copy()
+                    self.update_current_level_one_category_tab_data(self.scripts_data[index]['data'][0])
+                    self.update_current_level_one_category_dict(self.current_type_tab_data['data'])
 
-                    self.current_level_one_category_name = self.current_type_tab_data['data'][0]['name']
-                    self.current_level_one_category_id = self.current_type_tab_data['data'][0]['level_one_category_id']
-                    self.current_level_one_category_data = self.current_type_tab_data['data'][0].copy()
-
-                    self.set_level_one_category_dict()
+                    self.update_secondary_tabs()
                     self.load_current_scripts_data()
                     if self.is_search:
                         # 清空搜索框
                         self.is_search = False
                         self.clear_search()
 
-    def set_level_one_category_dict(self):
-        print('self.set_level_one_category_dict')
-        self.level_one_category_dict = {}
-        for level_one_category_data in self.current_type_tab_data['data']:
-            dict = {
-                'name': level_one_category_data['name'],
-                'type_id': level_one_category_data['type_id'],
-                'level_one_category_id': level_one_category_data['level_one_category_id']
-            }
-            self.level_one_category_dict[level_one_category_data['level_one_category_id']] = dict
-        print('self.level_one_category_dict', self.level_one_category_dict)
-        self.update_secondary_tabs()
-
     # <============================话术分类点击事件相关方法==============================>
 
     def on_secondary_button_clicked(self, type_id: int, level_one_category_id: int, tab_name: str):
-        print('on_secondary_button_clicked===>', type_id, level_one_category_id, tab_name)
         """话术分类按钮点击事件"""
         if level_one_category_id != self.current_level_one_category_id:
             # 更新按钮状态
@@ -1101,24 +1126,23 @@ class AssistantMainWindow(QMainWindow):
             result = list(filter(lambda item: item['level_one_category_id'] == level_one_category_id,
                                  self.current_type_tab_data['data']))
             if len(result) > 0:
-                self.current_level_one_category_name = result[0]['name']
-                self.current_level_one_category_id = result[0]['level_one_category_id']
-                self.current_level_one_category_data = result[0].copy()
+                self.update_current_level_one_category_tab_data(result[0])
+                # 更新一级分类dict数据
+                self.update_current_level_one_category_dict(result)
             self.load_current_scripts_data()
 
     def show_secondary_button_context_menu(self, position, type_id: int, level_one_category_id: int,
                                            level_one_category_name: str):
         """显示话术分类按钮右键菜单"""
-        print('show_secondary_button_context_menu===>', type_id, level_one_category_id, level_one_category_name)
         if level_one_category_name == "+":
             return  # "+"按钮不显示右键菜单
 
         try:
-            print('123123123')
             menu = QMenu(self)
             rename_action = QAction("修改一级分类名称", self)
             rename_action.triggered.connect(
-                lambda checked: self.show_edit_dialog('category', level_one_category_name, self.current_type_tab_id,
+                lambda checked: self.show_edit_dialog('level_one_category', level_one_category_name,
+                                                      self.current_type_tab_id,
                                                       level_one_category_id))
             menu.addAction(rename_action)
 
@@ -1128,7 +1152,6 @@ class AssistantMainWindow(QMainWindow):
                                                   level_one_category_name))
             menu.addAction(delete_action)
 
-            print('222222222222')
             # 获取按钮并显示菜单
             button = self.secondary_tab_buttons.get(level_one_category_id)
             if button:
@@ -1177,14 +1200,14 @@ class AssistantMainWindow(QMainWindow):
             # 点击空白区域的菜单
             add_title_action = QAction("添加话术标题", self)
             add_title_action.triggered.connect(
-                lambda checked: self.show_add_dialog('level_two_category', self.current_type_tab_name,
-                                                     self.current_level_one_category_name))  # 1表示添加话术标题
+                lambda checked: self.show_add_dialog('level_two_category', self.current_type_tab_id,
+                                                     self.current_level_one_category_id))  # 1表示添加话术标题
             menu.addAction(add_title_action)
 
             add_script_action = QAction("添加话术", self)
             add_script_action.triggered.connect(
-                lambda checked: self.show_add_dialog('script', self.current_type_tab_name,
-                                                     self.current_level_one_category_name))  # 2表示添加话术内容
+                lambda checked: self.show_add_dialog('script', self.current_type_tab_id,
+                                                     self.current_level_one_category_id))  # 2表示添加话术内容
             menu.addAction(add_script_action)
 
             menu.exec(self.tree_widget.mapToGlobal(position))
@@ -1198,8 +1221,11 @@ class AssistantMainWindow(QMainWindow):
 
         if data.get("type") == "title":
             # 分类节点菜单
-            print('data',data)
+            print('data', data)
             title_name = data.get("name")
+            type_id = data.get("type_id")
+            level_one_category_id = data.get("level_one_category_id")
+            level_two_category_id = data.get("level_two_category_id")
             add_script_action = QAction("添加话术", self)
             if self.is_search:
                 print('data', data)
@@ -1211,9 +1237,9 @@ class AssistantMainWindow(QMainWindow):
                     lambda checked=False: self.show_add_dialog('script', type, category, title))
             else:
                 add_script_action.triggered.connect(
-                    lambda checked: self.show_add_dialog('script', data.type_id,
-                                                         data.level_one_category_id,
-                                                         data.level_two_category_id))  # 2表示添加话术内容
+                    lambda checked: self.show_add_dialog('script', type_id,
+                                                         level_one_category_id,
+                                                         level_two_category_id))  # 2表示添加话术内容
             menu.addAction(add_script_action)
 
             if self.is_search:
@@ -1222,21 +1248,29 @@ class AssistantMainWindow(QMainWindow):
                 menu.addSeparator()
 
                 edit_action = QAction("编辑话术标题", self)
+                type_id = data.get("type_id")
+                level_one_category_id = data.get("level_one_category_id")
+                level_two_category_id = data.get("level_two_category_id")
                 title_name = data.get("name")
                 edit_action.triggered.connect(
-                    lambda checked=False: self.show_edit_dialog('title', title_name, self.current_type_tab_name,
-                                                                self.current_level_one_category_name))
+                    lambda checked=False: self.show_edit_dialog('level_two_category', title_name, type_id,
+                                                                level_one_category_id, level_two_category_id))
                 menu.addAction(edit_action)
 
                 delete_action = QAction("删除话术标题", self)
-                delete_action.triggered.connect(lambda checked=False: self.delete_script_title(data['type_id'],
-                                                         data['level_one_category_id'],
-                                                         data['level_two_category_id'],data['name']))
+                delete_action.triggered.connect(lambda checked=False: self.delete_script_title(type_id,
+                                                                                               level_one_category_id,
+                                                                                               level_two_category_id,
+                                                                                               title_name))
                 menu.addAction(delete_action)
 
         elif data.get("type") == "script":
             # 话术节点菜单
             edit_action = QAction("编辑话术", self)
+            type_id = data['type_id']
+            level_one_category_id = data['level_one_category_id']
+            level_two_category_id = data['level_two_category_id']
+            script_id = data['script_id']
             content = data['content']
             print('data', data)
             if self.is_search:
@@ -1255,8 +1289,8 @@ class AssistantMainWindow(QMainWindow):
                     title_name = parent_data.get("name") if parent_data else None
 
                 edit_action.triggered.connect(
-                    lambda checked=False: self.show_edit_dialog('script', content, self.current_type_tab_name,
-                                                                self.current_level_one_category_name, title_name))
+                    lambda checked=False: self.show_edit_dialog('script', content, type_id, level_one_category_id,
+                                                                level_two_category_id, script_id))
             menu.addAction(edit_action)
 
             delete_action = QAction("删除话术", self)
@@ -1841,12 +1875,12 @@ class AssistantMainWindow(QMainWindow):
 
             # 连接新增信号
             if add_type == 'level_one_category':
-                add_dialog.category_added_signal.connect(self.add_script_category_callback)
+                add_dialog.level_one_category_added_signal.connect(self.add_script_category_callback)
             elif add_type == 'level_two_category':
-                add_dialog.title_added_signal.connect(self.add_script_title_callback)
+                add_dialog.level_two_category_added_signal.connect(self.add_script_title_callback)
             elif add_type == 'script':
-                add_dialog.category_added_signal.connect(self.add_script_category_callback)
-                add_dialog.title_added_signal.connect(self.add_script_title_callback)
+                add_dialog.level_one_category_added_signal.connect(self.add_script_category_callback)
+                add_dialog.level_two_category_added_signal.connect(self.add_script_title_callback)
                 add_dialog.content_added_signal.connect(self.add_script_content_callback)
 
             # 连接弹窗关闭信号
@@ -1964,9 +1998,9 @@ class AssistantMainWindow(QMainWindow):
 
             # 连接编辑信号
             if edit_type == 'level_one_category':
-                edit_dialog.category_edited_signal.connect(self.edit_script_category_callback)
+                edit_dialog.level_one_category_added_signal.connect(self.edit_script_category_callback)
             elif edit_type == 'level_two_category':
-                edit_dialog.title_edited_signal.connect(self.edit_script_title_callback)
+                edit_dialog.level_two_category_edited_signal.connect(self.edit_script_title_callback)
             elif edit_type == 'script':
                 edit_dialog.content_edited_signal.connect(self.edit_script_content_callback)
 
@@ -2092,11 +2126,12 @@ class AssistantMainWindow(QMainWindow):
                             del tab_data['data'][index]
 
                 if self.current_level_one_category_id == level_one_category_id:
-                    self.current_level_one_category_id = self.current_type_tab_data['data'][0]['level_one_category_id']
-                    self.current_level_one_category_name = self.current_type_tab_data['data'][0]['name']
-                    self.current_level_one_category_data = self.current_type_tab_data['data'][0].copy()
+                    self.update_current_level_one_category_tab_data(self.current_type_tab_data['data'][0])
+                    # 更新一级分类dict数据
+                    self.update_current_level_one_category_dict(self.current_type_tab_data['data'])
 
-                self.set_level_one_category_dict()
+                self.update_current_level_one_category_dict(self.current_type_tab_data['data'])
+                self.update_secondary_tabs()
                 self.load_current_scripts_data()
 
                 # 保存数据
@@ -2104,7 +2139,8 @@ class AssistantMainWindow(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "错误", f"删除失败: {str(e)}")
 
-    def delete_script_title(self, tab_type_id: int,level_one_category_id: int, level_two_category_id: int, level_two_category_name: str):
+    def delete_script_title(self, tab_type_id: int, level_one_category_id: int, level_two_category_id: int,
+                            level_two_category_name: str):
         """删除分类标题"""
         reply = QMessageBox.question(
             self, "确认删除",
@@ -2126,7 +2162,9 @@ class AssistantMainWindow(QMainWindow):
                     id_arr = list(self.level_two_category_dict.keys())
                     index = id_arr.index(level_two_category_id)
                     if level_two_category_id in id_arr:
+                        print('self.current_level_one_category_data', self.current_level_one_category_data)
                         for level_two_category_data in self.current_level_one_category_data['data']:
+                            print('level_two_category_data', level_two_category_data)
                             if level_two_category_data['level_two_category_id'] == level_two_category_id:
                                 del self.current_level_one_category_data['data'][index]
 
@@ -2193,9 +2231,9 @@ def main():
     app = QApplication(sys.argv)
 
     # 设置应用程序信息
-    app.setApplicationName("聚雍宝")
+    app.setApplicationName("秒回")
     app.setApplicationVersion("2.0")
-    app.setOrganizationName("聚雍宝团队")
+    app.setOrganizationName("秒回团队")
 
     # 应用优化主题（推荐使用优化现代主题）
     try:

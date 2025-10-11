@@ -88,20 +88,20 @@ class DataAdapter:
             print('type', type)
             type_dict = {
                 "name": type.get('name', ''),
-                "type_id": type.get('id', 0),
+                "script_type_id": type.get('id', 0),
                 "data": []
             }
             for category in type.get('data', []):
                 level_one_category_dict = {
                     "name": category.get('name', ''),
-                    "type_id": type.get('id', 0),
+                    "script_type_id": type.get('id', 0),
                     "level_one_category_id": category.get('id', 0),
                     "data": []
                 }
                 for title in category.get('data', []):
                     level_two_category_dict = {
                         "name": title.get('name', ''),
-                        "type_id": type.get('id', 0),
+                        "script_type_id": type.get('id', 0),
                         "level_one_category_id": category.get('id', 0),
                         "level_two_category_id": title.get('id', 0),
                         "data": []
@@ -110,7 +110,7 @@ class DataAdapter:
                         script_dict = {
                             "content": script.get('content', ''),
                             "title": script.get('title', ''),
-                            "type_id": type.get('id', 0),
+                            "script_type_id": type.get('id', 0),
                             "level_one_category_id": category.get('id', 0),
                             "level_two_category_id": title.get('id', 0),
                             "script_id": script.get('id', 0)

@@ -3,6 +3,9 @@ import os
 from components.Input_dialog import ChineseInputDialog
 import threading
 import utils.constants as constants
+import uuid
+import time
+import random
 
 json_file_lock = threading.Lock()
 
@@ -26,3 +29,8 @@ def init_config_data():
                 config_data = json.load(f)
 
     return config_data
+
+
+def generate_guid():
+    random_id = random.randint(1000, 9999)
+    return random_id

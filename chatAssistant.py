@@ -343,12 +343,8 @@ class AssistantMainWindow(QMainWindow):
     def init_data(self):
         """初始化数据变量"""
         # Tab数据结构
-        self.current_type_tab_name = ""
         self.current_type_tab_id = 0
-        self.current_level_one_category_name = ""
         self.current_level_one_category_id = 0
-        self.current_level_two_category_name = ""
-        self.current_level_two_category_id = 0
 
         # 当前选中Tab数据
         self.current_type_tab_data = {}
@@ -359,6 +355,17 @@ class AssistantMainWindow(QMainWindow):
         self.current_type_tab_index = 0
         self.current_level_one_category_index = 0
         self.current_level_two_category_index = 0
+
+        # 数据结构
+        self.scripts_data = []
+        self.current_scripts_data = []
+        self.filtered_scripts = []
+
+        # 数据存储
+        self.script_type_dict = {}
+        self.level_one_category_dict = {}
+        self.level_two_category_dict = {}
+        self.right_click_data = {}
 
         # 窗口跟踪
         self.target_window = None
@@ -377,17 +384,6 @@ class AssistantMainWindow(QMainWindow):
         # 用户登录状态
         self.current_user_id = None
         self.is_logged_in = False
-
-        # 数据结构
-        self.scripts_data = []
-        self.current_scripts_data = []
-        self.filtered_scripts = []
-
-        # 数据存储
-        self.script_type_dict = {}
-        self.level_one_category_dict = {}
-        self.level_two_category_dict = {}
-        self.right_click_data = {}
 
         # 组件
         self.api_manager = None
@@ -609,7 +605,6 @@ class AssistantMainWindow(QMainWindow):
     def get_current_scripts_data(self) -> list:
         """获取当前选中Tab的数据"""
         if hasattr(self, 'scripts_data'):
-            # return self.scripts_data.get(self.current_type_tab_name, {}).get(self.current_level_one_category_name, {})
             if len(self.current_level_one_category_data.get('data', [])):
                 self.update_current_level_two_category_tab_data(self.current_level_one_category_data['data'])
                 return self.current_level_one_category_data['data']
@@ -651,13 +646,11 @@ class AssistantMainWindow(QMainWindow):
     # <============================处理基础数据方法==============================>
     def update_current_script_type_tab_data(self, data):
         '''更新当前选中的话术类型数据'''
-        self.current_type_tab_name = data['name']
         self.current_type_tab_id = data['script_type_id']
         self.current_type_tab_data = data.copy()
 
     def update_current_level_one_category_tab_data(self, data):
         '''更新当前选中的一级分类数据'''
-        self.current_level_one_category_name = data['name']
         self.current_level_one_category_id = data['level_one_category_id']
         self.current_level_one_category_data = data.copy()
         # 更新二级分类数据
@@ -1981,16 +1974,13 @@ class AssistantMainWindow(QMainWindow):
 
             result = list(filter(lambda item: item['script_type_id'] == script_type_id, self.scripts_data))
             tab_data_index = self.scripts_data.index(result[0])
-            print('tab_data_index', tab_data_index)
             result2 = list(
                 filter(lambda item: item['level_one_category_id'] == level_one_category_id, result[0]['data']))
             level_one_category_data_index = result[0]['data'].index(result2[0])
-            print('level_one_category_data_index', level_one_category_data_index)
 
             result3 = list(
                 filter(lambda item: item['level_two_category_id'] == level_two_category_id, result2[0]['data']))
             level_two_category_data_index = result2[0]['data'].index(result3[0])
-            print('level_two_category_data_index', level_two_category_data_index)
 
             script_data = {
                 "content": script_content,
@@ -2000,25 +1990,9 @@ class AssistantMainWindow(QMainWindow):
                 "level_two_category_id": level_two_category_id,
                 "script_id": utils.generate_guid()
             }
-            print('script_data', script_data)
             self.scripts_data[tab_data_index]['data'][level_one_category_data_index]['data'][
                 level_two_category_data_index]['data'].append(script_data)
 
-            # for script_data in self.scripts_data[tab_data_index]['data'][level_one_category_data_index]['data'][
-            #     level_two_category_data_index]['data']:
-            #     if script_data['script_id'] == script_id:
-            #         self.scripts_data[tab_data_index]['data'][level_one_category_data_index]['data'][
-            #             level_two_category_data_index]['data'].remove(script_data)
-
-            # 添加新的话术内容
-            # self.scripts_data[script_type_name][category_name][title_name].append(content)
-
-            # 当添加的话术标题与当前展示页面一致时更新
-            # if script_type_name == self.current_type_tab_name and category_name == self.current_level_one_category_name and self.is_search == False:
-            #     # 更新当前话术展示数据,并更新树形结构
-            #     self.load_current_scripts_data()
-            # elif self.is_search:
-            #     self.on_search_changed(self.search_text)
             self.load_current_scripts_data()
             # 保存数据
             self.save_scripts()
@@ -2191,11 +2165,6 @@ class AssistantMainWindow(QMainWindow):
                         for level_two_category_data in self.current_level_one_category_data['data']:
                             if level_two_category_data['level_two_category_id'] == level_two_category_id:
                                 del self.current_level_one_category_data['data'][index]
-
-                    # if category in self.scripts_data[self.current_type_tab_name][self.current_level_one_category_name]:
-                    #     del self.filtered_scripts[category]
-                    #     del self.scripts_data[self.current_type_tab_name][self.current_level_one_category_name][
-                    #         category]
 
                 self.load_current_scripts_data()
                 self.save_scripts()

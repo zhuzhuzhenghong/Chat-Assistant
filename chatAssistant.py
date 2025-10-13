@@ -343,18 +343,8 @@ class AssistantMainWindow(QMainWindow):
     def init_data(self):
         """初始化数据变量"""
         # Tab数据结构
-        self.current_type_tab_id = 0
-        self.current_level_one_category_id = 0
-
-        # 当前选中Tab数据
-        self.current_type_tab_data = {}
-        self.current_level_one_category_data = {}
-        self.current_level_two_category_data = []
-
-        # 当前选中的tab下标
-        self.current_type_tab_index = 0
-        self.current_level_one_category_index = 0
-        self.current_level_two_category_index = 0
+        self.current_type_id = 0
+        self.current_level_one_id = 0
 
         # 数据结构
         self.scripts_data = []
@@ -362,7 +352,6 @@ class AssistantMainWindow(QMainWindow):
         self.filtered_scripts = []
 
         # 数据存储
-        self.script_type_dict = {}
         self.level_one_category_dict = {}
         self.level_two_category_dict = {}
         self.right_click_data = {}
@@ -393,8 +382,8 @@ class AssistantMainWindow(QMainWindow):
 
         # UI组件引用
         self.primary_tabs = {}
-        self.secondary_tab_buttons = {}
-        self.secondary_buttons_widget = None
+        self.level_one_tab_buttons = {}
+        self.level_one_buttons_widget = None
         self.secondary_buttons_layout = None
 
         # 吸附功能配置
@@ -403,6 +392,7 @@ class AssistantMainWindow(QMainWindow):
 
         # 搜索状态
         self.is_search = False
+        self.search_text = ''
 
     def setup_window(self):
         """设置窗口属性"""
@@ -501,11 +491,13 @@ class AssistantMainWindow(QMainWindow):
         try:
             # 初始化数据适配器
             self.data_adapter = DataAdapter()
+            print('111111')
             # 初始化API管理器
             self.api_manager = APIManager()
 
             # 加载数据
             self.load_data_from_adapter()
+
             # 更新界面
             self.update_all_ui()
 
@@ -516,7 +508,7 @@ class AssistantMainWindow(QMainWindow):
                 self.title_bar.set_topmost_state(self.always_on_top)
 
             # 延迟更新按钮布局，确保界面完全渲染
-            QTimer.singleShot(100, self.update_secondary_tabs)
+            QTimer.singleShot(100, self.update_level_one_tabs)
 
         except Exception as e:
             print(f"加载初始数据失败: {e}")
@@ -525,57 +517,16 @@ class AssistantMainWindow(QMainWindow):
         """从数据适配器加载数据"""
         if self.data_adapter:
             # 获取话术数据
-            scripts_data = self.data_adapter.get_scripts_data()
-            if scripts_data:
-                self.scripts_data = scripts_data
-            else:
-                # 使用默认数据
-                self.scripts_data = utils.init_scripts_data()
+            self.scripts_data = self.data_adapter.get_scripts_data()
+            # 设置当前选中类型id
+            if not self.current_type_id:
+                print('self.data_adapter.all_type_id_list',self.data_adapter.all_type_id_list)
+                self.current_type_id = self.data_adapter.all_type_id_list[0]
 
-            # 确保当前Tab存在
-            matching_indices = [i for i, item in enumerate(self.scripts_data)
-                                if item.get('script_type_id') == self.current_type_tab_id]
-            if len(matching_indices) > 0:
-                index = matching_indices[0]
-
-                # 更新话术类型tab
-                self.update_current_script_type_tab_data(self.scripts_data[index])
-                # 更新话术类型dict数据
-                self.update_current_script_type_data_dict(self.scripts_data)
-                # 更新一级分类tab
-                self.update_current_level_one_category_tab_data(self.scripts_data[index]['data'][0])
-                # 更新一级分类dict数据
-                self.update_current_level_one_category_dict(self.scripts_data[0]['data'])
-
-            else:
-                # 更新话术类型tab
-                self.update_current_script_type_tab_data(self.scripts_data[0])
-                # 更新话术类型dict数据
-                self.update_current_script_type_data_dict(self.scripts_data)
-                # 更新一级分类tab
-                self.update_current_level_one_category_tab_data(self.scripts_data[0]['data'][0])
-                # 更新一级分类dict数据
-                self.update_current_level_one_category_dict(self.scripts_data[0]['data'])
-
-            # # 加载配置
-            # config = self.data_adapter.get_config_data()
-            # if config:
-            #     self.send_mode = config.get('send_mode', self.send_mode)
-            #     self.always_on_top = config.get('always_on_top', self.always_on_top)
-            #     self.dock_enabled = config.get('dock_enabled', self.dock_enabled)
-            #     self.dock_gap = config.get('dock_gap', self.dock_gap)
-            #
-            #     # 更新吸附管理器配置
-            #     if self.dock_manager:
-            #         self.dock_manager.set_dock_gap(self.dock_gap)
-            #
-            #     # 更新UI状态
-            #     if hasattr(self, 'dock_checkbox'):
-            #         self.dock_checkbox.setChecked(self.dock_enabled)
-
-            # # 更新当前数据
-            # self.current_scripts_data = self.get_current_scripts_data()
-            # self.filtered_scripts = self.current_scripts_data.copy()
+            # 设置当前选中一级分类id
+            if self.current_type_id and not self.current_level_one_id:
+                level_one_list = self.data_adapter.get_level_one_list(self.current_type_id)
+                self.current_level_one_id = level_one_list[0]['id']
 
     def sync_cloud_data(self):
         """同步云端数据"""
@@ -586,7 +537,13 @@ class AssistantMainWindow(QMainWindow):
             if self.data_adapter:
                 if self.data_adapter:
                     self.data_adapter.api_manager = self.api_manager
-                    self.data_adapter.user_id = self.current_user_id or 0
+                    uid = 0
+                    try:
+                        uid = int(self.current_user_id) if (
+                                self.current_user_id is not None and str(self.current_user_id).isdigit()) else 0
+                    except:
+                        uid = 0
+                    self.data_adapter.user_id = uid
 
                 success = self.data_adapter.load_user_data()
                 if success:
@@ -602,17 +559,10 @@ class AssistantMainWindow(QMainWindow):
             self.status_label.setText("数据同步失败，使用本地数据")
             return False
 
-    def get_current_scripts_data(self) -> list:
-        """获取当前选中Tab的数据"""
-        if hasattr(self, 'scripts_data'):
-            if len(self.current_level_one_category_data.get('data', [])):
-                self.update_current_level_two_category_tab_data(self.current_level_one_category_data['data'])
-                return self.current_level_one_category_data['data']
-        return []
-
     def load_current_scripts_data(self, isClear: bool = False):
         """加载当前Tab数据"""
-        self.current_scripts_data = self.get_current_scripts_data()
+        self.current_scripts_data = self.data_adapter.get_tree_scripts_data(self.current_type_id,
+                                                                            self.current_level_one_id)
         self.filtered_scripts = self.current_scripts_data.copy()
         self.update_tree()
         if isClear:
@@ -644,32 +594,6 @@ class AssistantMainWindow(QMainWindow):
             print(f'保存配置失败: {e}')
 
     # <============================处理基础数据方法==============================>
-    def update_current_script_type_tab_data(self, data):
-        '''更新当前选中的话术类型数据'''
-        self.current_type_tab_id = data['script_type_id']
-        self.current_type_tab_data = data.copy()
-
-    def update_current_level_one_category_tab_data(self, data):
-        '''更新当前选中的一级分类数据'''
-        self.current_level_one_category_id = data['level_one_category_id']
-        self.current_level_one_category_data = data.copy()
-        # 更新二级分类数据
-        self.update_current_level_two_category_tab_data(data['data'])
-
-    def update_current_level_two_category_tab_data(self, data):
-        '''更新当前选中的二级分类数据'''
-        self.current_level_two_category_data = data
-        self.update_current_level_two_category_data_dict(data)
-
-    def update_current_script_type_data_dict(self, data):
-        '''更新话术类型dict数据'''
-        self.script_type_dict = {}
-        for tab_data in data:
-            dict = {
-                'name': tab_data['name'],
-                'script_type_id': tab_data['script_type_id']
-            }
-            self.script_type_dict[tab_data['script_type_id']] = dict
 
     def update_current_level_one_category_dict(self, data):
         '''更新一级分类dict数据'''
@@ -681,18 +605,6 @@ class AssistantMainWindow(QMainWindow):
                 'level_one_category_id': level_one_category_data['level_one_category_id']
             }
             self.level_one_category_dict[level_one_category_data['level_one_category_id']] = dict
-
-    def update_current_level_two_category_data_dict(self, data):
-        '''更新二级分类dict数据'''
-        self.level_two_category_dict = {}
-        for level_two_category_data in data:
-            dict = {
-                'name': level_two_category_data['name'],
-                'script_type_id': level_two_category_data['script_type_id'],
-                'level_one_category_id': level_two_category_data['level_one_category_id'],
-                'level_two_category_id': level_two_category_data['level_two_category_id']
-            }
-            self.level_two_category_dict[level_two_category_data['level_two_category_id']] = dict
 
     # <============================创建界面元素方法==============================>
 
@@ -736,21 +648,21 @@ class AssistantMainWindow(QMainWindow):
         primary_layout.setContentsMargins(0, 0, 0, 0)  # 减少底部边距
 
         # 3. 创建标签页控件
-        self.primary_tab_widget = QTabWidget()
-        self.primary_tab_widget.setTabPosition(QTabWidget.North)  # 标签在顶部
-        self.primary_tab_widget.currentChanged.connect(self.on_primary_tab_changed)  # 切换标签时触发
+        self.type_tab_widget = QTabWidget()
+        self.type_tab_widget.setTabPosition(QTabWidget.North)  # 标签在顶部
+        self.type_tab_widget.currentChanged.connect(self.on_primary_tab_changed)  # 切换标签时触发
 
         # 4. 为标签栏设置右键菜单功能
         # try:
         #     # 设置标签栏支持自定义右键菜单
-        #     self.primary_tab_widget.tabBar().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        #     self.type_tab_widget.tabBar().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         #     # 连接右键菜单请求信号到处理函数
-        #     self.primary_tab_widget.tabBar().customContextMenuRequested.connect(self.show_primary_tab_context_menu)
+        #     self.type_tab_widget.tabBar().customContextMenuRequested.connect(self.show_primary_tab_context_menu)
         #     print("一级Tab右键菜单设置成功")  # 调试信息
         # except Exception as e:
         #     print(f"设置一级Tab右键菜单失败: {e}")  # 错误处理
 
-        primary_layout.addWidget(self.primary_tab_widget, 1)
+        primary_layout.addWidget(self.type_tab_widget, 1)
 
     def create_secondary_tabs_section(self, parent_layout):
         """创建话术分类Tab部分（按钮形式）"""
@@ -762,15 +674,15 @@ class AssistantMainWindow(QMainWindow):
         # secondary_layout.setSpacing(0)
 
         # 创建按钮容器
-        self.secondary_buttons_widget = QWidget()
-        # self.secondary_buttons_widget.setMinimumHeight(40)
+        self.level_one_buttons_widget = QWidget()
+        # self.level_one_buttons_widget.setMinimumHeight(40)
 
         # 存储按钮的字典和布局信息
-        self.secondary_tab_buttons = {}
+        self.level_one_tab_buttons = {}
         self.button_rows = []  # 存储每行的按钮
 
         # 直接添加按钮容器到布局
-        secondary_layout.addWidget(self.secondary_buttons_widget)
+        secondary_layout.addWidget(self.level_one_buttons_widget)
 
     def create_tree_section(self, parent_layout):
         """创建树形列表部分"""
@@ -826,57 +738,66 @@ class AssistantMainWindow(QMainWindow):
 
     def update_all_ui(self):
         """更新所有界面元素"""
-        self.update_primary_tabs()
-        self.update_secondary_tabs()
+        self.update_type_tabs()
+        self.update_level_one_tabs()
         self.update_tree()
         self.update_login_status()
+    def update_ui(self, updateType: str):
+        print('updateType', updateType)
+        if updateType == 'type':
+            self.update_level_one_tabs()
+            self.load_current_scripts_data()
+        elif updateType == 'level_one':
+            self.load_current_scripts_data()
+        elif updateType == 'edit_level_one':
+            self.update_level_one_tabs()
+            self.load_data_from_adapter()
+        elif updateType == 'delete_level_one':
+            self.load_data_from_adapter()
+            self.update_level_one_tabs()
+            self.load_current_scripts_data()
 
-    def update_primary_tabs(self):
+        if self.is_search:
+            self.is_search = False
+            self.clear_search()
+
+    def update_type_tabs(self):
         """更新话术类型Tab"""
         # 清空现有Tab
-        self.primary_tab_widget.clear()
+        self.type_tab_widget.clear()
         self.primary_tabs.clear()
+        print('333333')
 
         # 添加新Tab
         if self.scripts_data:
-            for script_type_id, tab_type_attr in self.script_type_dict.items():
+            for type_attr in self.data_adapter.all_type_data_list:
+                type_name = type_attr.get('name')
+                type_id = type_attr.get('id')
                 tab_widget = QWidget()
-                tab_widget.setProperty('script_type_id', script_type_id)
+                tab_widget.setProperty('script_type_id', type_id)
 
-                self.primary_tabs[script_type_id] = tab_widget
-                self.primary_tab_widget.addTab(tab_widget, tab_type_attr['name'])
+                self.primary_tabs[type_id] = tab_widget
+                self.type_tab_widget.addTab(tab_widget, type_name)
 
             # 选中当前Tab
-            idArr = list(self.script_type_dict.keys())
+            idList = self.data_adapter.all_type_id_list
+            if self.current_type_id in idList:
+                index = idList.index(self.current_type_id)
+                self.type_tab_widget.setCurrentIndex(index)
 
-            if self.current_type_tab_id in idArr:
-                self.current_type_tab_index = idArr.index(self.current_type_tab_id)
-                self.primary_tab_widget.setCurrentIndex(self.current_type_tab_index)
-                self.current_type_tab_data = self.scripts_data[self.current_type_tab_index].copy()
-
-                self.update_current_level_one_category_dict(self.current_type_tab_data['data'])
-                self.update_secondary_tabs()
+                self.update_level_one_tabs()
             else:
                 print('未找到当前一级tab选中值')
 
-        # # 重新设置右键菜单（因为Tab被清空重建了）
-        # try:
-        #     self.primary_tab_widget.tabBar().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        #     self.primary_tab_widget.tabBar().customContextMenuRequested.connect(self.show_primary_tab_context_menu)
-        #     print("一级Tab右键菜单重新设置成功")  # 调试信息
-        # except Exception as e:
-        #     print(f"重新设置一级Tab右键菜单失败: {e}")
-
-    def update_secondary_tabs(self):
+    def update_level_one_tabs(self):
         """更新话术分类Tab（按钮形式）"""
         # 清空现有按钮
-        for button in self.secondary_tab_buttons.values():
+        for button in self.level_one_tab_buttons.values():
             button.deleteLater()
-        self.secondary_tab_buttons.clear()
+        self.level_one_tab_buttons.clear()
 
         # 添加新按钮
-        idArr = list(self.script_type_dict.keys())
-        if self.current_type_tab_id in idArr:
+        if self.current_type_id in self.data_adapter.all_type_id_list:
             # 按钮参数
             button_height = 24
             button_spacing = 1
@@ -885,27 +806,31 @@ class AssistantMainWindow(QMainWindow):
             max_button_width = 90  # 最大宽度
 
             # 计算容器宽度
-            container_width = self.secondary_buttons_widget.width()
+            container_width = self.level_one_buttons_widget.width()
             if container_width <= 50:  # 如果宽度太小或为0，使用父容器宽度
                 parent_width = self.width() if self.width() > 0 else 300
                 container_width = parent_width
 
             x = margin
             y = margin
-            for level_one_category_id, level_one_category_attr in self.level_one_category_dict.items():
-                script_type_id = level_one_category_attr.get('script_type_id', 0)
-                name = level_one_category_attr.get('name', '')
-                # 创建按钮
-                button = ModernTabButton(name,
-                                         level_one_category_id == self.current_level_one_category_id)
-                # 设置属性
-                button.setProperty("level_one_category_id", level_one_category_id)
 
-                button.setParent(self.secondary_buttons_widget)
+            level_one_List = self.data_adapter.get_level_one_list(self.current_type_id)
+
+            for level_one_attr in level_one_List:
+                level_one_id = level_one_attr.get('id')
+                level_one_name = level_one_attr.get('name')
+                type_id = level_one_attr.get('typeId')
+
+                # 创建按钮
+                button = ModernTabButton(level_one_name, level_one_id == self.current_level_one_id)
+                # 设置属性
+                button.setProperty("level_one_id", level_one_id)
+
+                button.setParent(self.level_one_buttons_widget)
 
                 # 根据文字内容计算按钮宽度
                 font_metrics = button.fontMetrics()
-                text_width = font_metrics.horizontalAdvance(name)
+                text_width = font_metrics.horizontalAdvance(level_one_name)
                 # 添加左右内边距
                 button_width = max(min_button_width, min(text_width + 10, max_button_width))
 
@@ -919,34 +844,31 @@ class AssistantMainWindow(QMainWindow):
 
                 # 连接点击事件 - 使用默认参数捕获循环变量
                 button.clicked.connect(
-                    lambda checked=False, script_type_id=script_type_id, level_one_category_id=level_one_category_id,
-                           name=name: self.on_secondary_button_clicked(script_type_id, level_one_category_id, name))
+                    lambda checked=False, type_id=type_id, level_one_id=level_one_id,
+                           level_one_name=level_one_name: self.on_secondary_button_clicked(type_id, level_one_id,
+                                                                                           level_one_name))
 
                 # 设置右键菜单
                 button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
                 button.customContextMenuRequested.connect(
-                    lambda pos, script_type_id=script_type_id, level_one_category_id=level_one_category_id,
-                           name=name: self.show_secondary_button_context_menu(pos, script_type_id,
-                                                                              level_one_category_id, name)
+                    lambda pos, type_id=type_id, level_one_id=level_one_id,
+                           level_one_name=level_one_name: self.show_level_one_button_context_menu(pos, type_id,
+                                                                                                  level_one_id,
+                                                                                                  level_one_name)
                 )
 
                 # 设置位置
                 button.move(x, y)
                 button.show()
 
-                self.secondary_tab_buttons[level_one_category_id] = button
+                self.level_one_tab_buttons[level_one_id] = button
 
                 # 计算下一个按钮位置
                 x += button_width + button_spacing
 
-            idArr = list(self.level_one_category_dict.keys())
-            if self.current_level_one_category_id in idArr:
-                index = idArr.index(self.current_level_one_category_id)
-                self.current_level_one_category_data = self.current_type_tab_data['data'][index].copy()
-
             # 添加"+"按钮
             add_button = ModernTabButton("+", False)
-            add_button.setParent(self.secondary_buttons_widget)
+            add_button.setParent(self.level_one_buttons_widget)
             add_button_width = 30
             add_button.setFixedSize(add_button_width, button_height)
 
@@ -956,13 +878,13 @@ class AssistantMainWindow(QMainWindow):
                 y += button_height + button_spacing
 
             add_button.clicked.connect(
-                lambda checked: self.show_add_dialog('level_one_category', self.current_type_tab_id))
+                lambda checked: self.show_add_dialog('level_one_category', self.current_type_id))
 
             # 设置位置
             add_button.move(x, y)
             add_button.show()
 
-            self.secondary_tab_buttons["+"] = add_button
+            self.level_one_tab_buttons["+"] = add_button
 
             # 更新容器高度 - 根据最后一个按钮的位置计算
             # 如果所有按钮都在第一行 (y == margin)，则只需要一行的高度
@@ -973,8 +895,8 @@ class AssistantMainWindow(QMainWindow):
 
             # 设置最小高度，确保不会太小
             new_height = max(new_height, 0)
-            self.secondary_buttons_widget.setMinimumHeight(new_height)
-            self.secondary_buttons_widget.setMaximumHeight(new_height)
+            self.level_one_buttons_widget.setMinimumHeight(new_height)
+            self.level_one_buttons_widget.setMaximumHeight(new_height)
 
             self.load_current_scripts_data()
 
@@ -986,10 +908,7 @@ class AssistantMainWindow(QMainWindow):
             # 创建分类节点
             category_item = QTreeWidgetItem([f"📁 {title_data['name']}"])
             category_item.setData(0, Qt.ItemDataRole.UserRole,
-                                  {"type": "title", "script_type_id": title_data['script_type_id'],
-                                   "level_one_category_id": title_data['level_one_category_id'],
-                                   "level_two_category_id": title_data['level_two_category_id'],
-                                   "name": title_data['name']})
+                                  {"type": "title", "id": title_data['id'], "name": title_data['name']})
             self.tree_widget.addTopLevelItem(category_item)
 
             # 添加话术内容
@@ -1001,10 +920,7 @@ class AssistantMainWindow(QMainWindow):
                     script_item = QTreeWidgetItem([f"💬 {display_text}"])
                     script_item.setData(0, Qt.ItemDataRole.UserRole, {
                         "type": "script",
-                        "script_type_id": script_data['script_type_id'],
-                        "level_one_category_id": script_data['level_one_category_id'],
-                        "level_two_category_id": script_data['level_two_category_id'],
-                        "script_id": script_data['script_id'],
+                        "id": script_data['id'],
                         "content": script_data['content'],
                         "title": script_data['title'],
                         "index": index
@@ -1080,71 +996,58 @@ class AssistantMainWindow(QMainWindow):
     # <============================话术类型点击事件相关方法==============================>
 
     def on_primary_tab_changed(self, index: int):
-        """话术类型Tab切换"""
-        if index >= 0:
-            script_type_id_arr = list(self.script_type_dict.keys())
+        """话术类型Tab切换（通过索引）"""
+        type_id_list = self.data_adapter.all_type_id_list
+        if index < len(type_id_list):
+            type_id = type_id_list[index]
+            if type_id != self.current_type_id:
+                # 更新当前类型
+                self.current_type_id = type_id
 
-            # 正常的Tab切换
-            if index < len(script_type_id_arr):
-                script_type_id = script_type_id_arr[index]
-                if script_type_id != self.current_type_tab_id:
-                    self.update_current_script_type_tab_data(self.scripts_data[index])
-                    self.update_current_script_type_data_dict(self.scripts_data)
+                level_one_list = self.data_adapter.get_level_one_list(self.current_type_id)
+                self.current_level_one_id = level_one_list[0]['id']
 
-                    self.update_current_level_one_category_tab_data(self.scripts_data[index]['data'][0])
-                    self.update_current_level_one_category_dict(self.current_type_tab_data['data'])
-
-                    self.update_secondary_tabs()
-                    self.load_current_scripts_data()
-                    if self.is_search:
-                        # 清空搜索框
-                        self.is_search = False
-                        self.clear_search()
+                # 刷新
+                self.update_ui('type')
 
     # <============================话术分类点击事件相关方法==============================>
 
-    def on_secondary_button_clicked(self, script_type_id: int, level_one_category_id: int, tab_name: str):
+    def on_secondary_button_clicked(self, type_id: int, level_one_id: int, level_one_name: str):
         """话术分类按钮点击事件"""
-        if level_one_category_id != self.current_level_one_category_id:
+        if level_one_id != self.current_level_one_id:
             # 更新按钮状态
-            for btn_level_one_category_id, button in self.secondary_tab_buttons.items():
-                if tab_name != "+":  # 跳过"+"按钮
-                    button.set_selected(btn_level_one_category_id == level_one_category_id)
+            for btn_level_one_id, button in self.level_one_tab_buttons.items():
+                if level_one_name != "+":  # 跳过"+"按钮
+                    button.set_selected(btn_level_one_id == level_one_id)
+                    self.current_level_one_id = level_one_id
                     if self.is_search:
                         # 清空搜索框
                         self.is_search = False
                         self.clear_search()
 
-            result = list(filter(lambda item: item['level_one_category_id'] == level_one_category_id,
-                                 self.current_type_tab_data['data']))
-            if len(result) > 0:
-                self.update_current_level_one_category_tab_data(result[0])
+            # 刷新
+            self.update_ui('level_one')
 
-            self.load_current_scripts_data()
-
-    def show_secondary_button_context_menu(self, position, script_type_id: int, level_one_category_id: int,
-                                           level_one_category_name: str):
+    def show_level_one_button_context_menu(self, position, type_id: int, level_one_id: int,
+                                           level_one_name: str):
         """显示话术分类按钮右键菜单"""
-        if level_one_category_name == "+":
+        if level_one_name == "+":
             return  # "+"按钮不显示右键菜单
 
         try:
             menu = QMenu(self)
             rename_action = QAction("修改一级分类名称", self)
             rename_action.triggered.connect(
-                lambda checked: self.show_edit_dialog('level_one_category', level_one_category_name,
-                                                      self.current_type_tab_id,
-                                                      level_one_category_id))
+                lambda checked: self.show_edit_dialog('level_one', level_one_id))
             menu.addAction(rename_action)
 
             delete_action = QAction("删除一级分类", self)
             delete_action.triggered.connect(
-                lambda: self.delete_secondary_tab(self.current_type_tab_id, level_one_category_id,
-                                                  level_one_category_name))
+                lambda: self.delete_level_one(level_one_id, level_one_name))
             menu.addAction(delete_action)
 
             # 获取按钮并显示菜单
-            button = self.secondary_tab_buttons.get(level_one_category_id)
+            button = self.level_one_tab_buttons.get(level_one_id)
             if button:
                 global_pos = button.mapToGlobal(position)
                 menu.exec(global_pos)
@@ -1191,14 +1094,14 @@ class AssistantMainWindow(QMainWindow):
             # 点击空白区域的菜单
             add_title_action = QAction("添加话术标题", self)
             add_title_action.triggered.connect(
-                lambda checked: self.show_add_dialog('level_two_category', self.current_type_tab_id,
-                                                     self.current_level_one_category_id))  # 1表示添加话术标题
+                lambda checked: self.show_add_dialog('level_two_category', self.current_type_id,
+                                                     self.current_level_one_id))  # 1表示添加话术标题
             menu.addAction(add_title_action)
 
             add_script_action = QAction("添加话术", self)
             add_script_action.triggered.connect(
-                lambda checked: self.show_add_dialog('script', self.current_type_tab_id,
-                                                     self.current_level_one_category_id))  # 2表示添加话术内容
+                lambda checked: self.show_add_dialog('script', self.current_type_id,
+                                                     self.current_level_one_id))  # 2表示添加话术内容
             menu.addAction(add_script_action)
 
             menu.exec(self.tree_widget.mapToGlobal(position))
@@ -1212,80 +1115,37 @@ class AssistantMainWindow(QMainWindow):
 
         if data.get("type") == "title":
             # 分类节点菜单
-            print('data', data)
-            title_name = data.get("name")
-            script_type_id = data.get("script_type_id")
-            level_one_category_id = data.get("level_one_category_id")
-            level_two_category_id = data.get("level_two_category_id")
+            level_two_name = data.get("name")
+            level_two_id = data.get("id")
+
             add_script_action = QAction("添加话术", self)
-            if self.is_search:
-                list = data['name'].split('-')
-                type = list[0]
-                category = list[1]
-                title = list[2]
-                add_script_action.triggered.connect(
-                    lambda checked=False: self.show_add_dialog('script', type, category, title))
-            else:
-                add_script_action.triggered.connect(
-                    lambda checked: self.show_add_dialog('script', script_type_id,
-                                                         level_one_category_id,
-                                                         level_two_category_id))  # 2表示添加话术内容
+            add_script_action.triggered.connect(
+                lambda checked: self.show_add_dialog('script', level_two_id))  # 2表示添加话术内容
             menu.addAction(add_script_action)
 
-            if self.is_search:
-                print('搜索框内禁止编辑和删除话术标题')
-            else:
-                menu.addSeparator()
+            menu.addSeparator()
+            edit_action = QAction("编辑话术标题", self)
+            edit_action.triggered.connect(
+                lambda checked=False: self.show_edit_dialog('level_two', level_two_name, level_two_id))
+            menu.addAction(edit_action)
 
-                edit_action = QAction("编辑话术标题", self)
-                script_type_id = data.get("script_type_id")
-                level_one_category_id = data.get("level_one_category_id")
-                level_two_category_id = data.get("level_two_category_id")
-                title_name = data.get("name")
-                edit_action.triggered.connect(
-                    lambda checked=False: self.show_edit_dialog('level_two_category', title_name, script_type_id,
-                                                                level_one_category_id, level_two_category_id))
-                menu.addAction(edit_action)
-
-                delete_action = QAction("删除话术标题", self)
-                delete_action.triggered.connect(lambda checked=False: self.delete_script_title(script_type_id,
-                                                                                               level_one_category_id,
-                                                                                               level_two_category_id,
-                                                                                               title_name))
-                menu.addAction(delete_action)
+            delete_action = QAction("删除话术标题", self)
+            delete_action.triggered.connect(
+                lambda checked=False: self.delete_level_two(level_two_id, level_two_name))
+            menu.addAction(delete_action)
 
         elif data.get("type") == "script":
             # 话术节点菜单
             edit_action = QAction("编辑话术", self)
-            script_type_id = data['script_type_id']
-            level_one_category_id = data['level_one_category_id']
-            level_two_category_id = data['level_two_category_id']
-            script_id = data['script_id']
-            content = data['content']
+            script_id = data['id']
             self.right_click_data = data
-            if self.is_search:
-                list = data['title'].split('-')
-                type = list[0]
-                category = list[1]
-                title = list[2]
-                edit_action.triggered.connect(
-                    lambda checked=False: self.show_edit_dialog('script', content, type, category, title))
-            else:
-                # 获取话术标题（父节点的内容）
-                parent_item = item.parent()  # 获取父节点
-                title_name = None
-                if parent_item:
-                    parent_data = parent_item.data(0, Qt.ItemDataRole.UserRole)
-                    title_name = parent_data.get("name") if parent_data else None
 
-                edit_action.triggered.connect(
-                    lambda checked=False: self.show_edit_dialog('script', content, script_type_id,
-                                                                level_one_category_id,
-                                                                level_two_category_id, script_id))
+            edit_action.triggered.connect(
+                lambda checked=False: self.show_edit_dialog('script', script_id))
             menu.addAction(edit_action)
 
             delete_action = QAction("删除话术", self)
-            delete_action.triggered.connect(lambda checked=False: self.delete_script_content(data))
+            delete_action.triggered.connect(lambda checked=False: self.delete_script(script_id))
             menu.addAction(delete_action)
 
         menu.exec(self.tree_widget.mapToGlobal(position))
@@ -1293,25 +1153,31 @@ class AssistantMainWindow(QMainWindow):
     # <============================搜索框相关方法==============================>
 
     def on_search_changed(self, text: str):
-        """搜索文本改变"""
+        """搜索文本改变（按当前列表结构过滤）"""
         self.search_text = text.strip().lower()
-
         if not self.search_text:
             self.filtered_scripts = self.current_scripts_data.copy()
             self.is_search = False
         else:
-            self.filtered_scripts = {}
-            # 搜索所有Tab中的话术
-            for primary_tab, secondary_tabs in self.scripts_data.items():
-                for secondary_tab, categories in secondary_tabs.items():
-                    for category, scripts in categories.items():
-                        filtered_scripts = [script for script in scripts
-                                            if self.search_text in script.lower()]
-                        if filtered_scripts:
-                            self.is_search = True
-                            display_category = f"{primary_tab}-{secondary_tab}-{category}"
-                            self.filtered_scripts[display_category] = filtered_scripts
-
+            self.is_search = True
+            filtered = []
+            # 在当前二级分类列表中进行过滤
+            for title_node in self.current_scripts_data:
+                scripts = title_node.get('data', [])
+                matched_scripts = [
+                    s for s in scripts
+                    if self.search_text in (s.get('content', '').lower()) or
+                       self.search_text in (s.get('title', '').lower())
+                ]
+                if matched_scripts:
+                    filtered.append({
+                        'name': title_node.get('name', ''),
+                        'script_type_id': title_node.get('script_type_id', 0),
+                        'level_one_category_id': title_node.get('level_one_category_id', 0),
+                        'level_two_category_id': title_node.get('level_two_category_id', 0),
+                        'data': matched_scripts
+                    })
+            self.filtered_scripts = filtered
         self.update_tree()
 
     def clear_search(self):
@@ -1413,38 +1279,7 @@ class AssistantMainWindow(QMainWindow):
     # <============================权限控制相关方法==============================>
 
     def get_user_permissions(self) -> Dict[str, bool]:
-        """获取用户权限"""
-        # 这里可以根据实际需求从API或配置中获取用户权限
-        # 目前返回默认权限，后续可以对接接口
-        default_permissions = {
-            'add_secondary_tab': True,
-            'add_category': True,
-            'add_script': True
-        }
-
-        # 如果有登录用户，可以根据用户角色返回不同权限
-        if hasattr(self, 'current_user') and self.current_user:
-            user_role = getattr(self.current_user, 'role', 'user')
-            if user_role == 'admin':
-                return {
-                    'add_secondary_tab': True,
-                    'add_category': True,
-                    'add_script': True
-                }
-            elif user_role == 'manager':
-                return {
-                    'add_secondary_tab': False,
-                    'add_category': True,
-                    'add_script': True
-                }
-            else:  # regular user
-                return {
-                    'add_secondary_tab': False,
-                    'add_category': False,
-                    'add_script': True
-                }
-
-        return default_permissions
+        pass
 
     # <============================登陆/登出相关方法==============================>
 
@@ -1454,10 +1289,10 @@ class AssistantMainWindow(QMainWindow):
             reply = QMessageBox.question(
                 self, "登出确认",
                 f"当前用户: {self.current_user_id}\n确定要登出吗？",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
             )
-            if reply == QMessageBox.Yes:
+            if reply == QMessageBox.StandardButton.Yes:
                 self.logout_user()
             return
 
@@ -1539,13 +1374,13 @@ class AssistantMainWindow(QMainWindow):
         menu.addSeparator()
 
         # 文件管理
-        import_action = QAction("导入数据", self)
-        import_action.triggered.connect(self.import_data)
-        menu.addAction(import_action)
-
-        export_action = QAction("导出数据", self)
-        export_action.triggered.connect(self.export_data)
-        menu.addAction(export_action)
+        # import_action = QAction("导入数据", self)
+        # import_action.triggered.connect(self.import_data)
+        # menu.addAction(import_action)
+        #
+        # export_action = QAction("导出数据", self)
+        # export_action.triggered.connect(self.export_data)
+        # menu.addAction(export_action)
 
         # 云端数据管理
         if self.is_logged_in:
@@ -1575,54 +1410,6 @@ class AssistantMainWindow(QMainWindow):
         self.save_config()
         self.status_label.setText(f"发送模式: {mode}")
 
-    def import_data(self):
-        """导入数据"""
-        from PySide6.QtWidgets import QFileDialog
-
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "选择要导入的文件", "",
-            "Excel文件 (*.xlsx *.xls);;CSV文件 (*.csv);;JSON文件 (*.json);;所有文件 (*.*)"
-        )
-
-        if file_path and self.data_adapter:
-            try:
-                success = self.data_adapter.import_data_from_file(file_path)
-                if success:
-                    self.load_data_from_adapter()
-                    self.update_all_ui()
-                    QMessageBox.information(self, "导入成功", "数据导入成功！")
-                else:
-                    QMessageBox.critical(self, "导入失败", "数据导入失败，请检查文件格式！")
-            except Exception as e:
-                QMessageBox.critical(self, "导入失败", f"导入时发生错误: {str(e)}")
-
-    def export_data(self):
-        """导出数据"""
-        from PySide6.QtWidgets import QFileDialog
-
-        file_path, selected_filter = QFileDialog.getSaveFileName(
-            self, "选择导出位置", "",
-            "Excel文件 (*.xlsx);;CSV文件 (*.csv);;JSON文件 (*.json)"
-        )
-
-        if file_path and self.data_adapter:
-            try:
-                # 根据选择的过滤器确定格式
-                if "Excel" in selected_filter:
-                    file_format = "excel"
-                elif "CSV" in selected_filter:
-                    file_format = "csv"
-                else:
-                    file_format = "json"
-
-                success = self.data_adapter.export_data_to_file(file_path, file_format)
-                if success:
-                    QMessageBox.information(self, "导出成功", f"数据已导出到: {file_path}")
-                else:
-                    QMessageBox.critical(self, "导出失败", "数据导出失败！")
-            except Exception as e:
-                QMessageBox.critical(self, "导出失败", f"导出时发生错误: {str(e)}")
-
     def upload_data_to_cloud(self):
         """上传数据到云端"""
         try:
@@ -1643,9 +1430,20 @@ class AssistantMainWindow(QMainWindow):
 
             if reply == QMessageBox.Yes:
                 self.data_adapter.api_manager = self.api_manager
-                self.data_adapter.user_id = self.current_user_id
+                uid = 0
+                try:
+                    uid = int(self.current_user_id) if (
+                            self.current_user_id is not None and str(self.current_user_id).isdigit()) else 0
+                except:
+                    uid = 0
+                self.data_adapter.user_id = uid
 
-                success = self.data_adapter.push_local_scripts_data(data=self.scripts_data)
+                # 统一通过保存与索引刷新后再上传，避免直接赋值
+                self.save_scripts()
+                if self.data_adapter:
+                    self.data_adapter.init_data()
+                    self.load_data_from_adapter()
+                success = self.data_adapter.push_local_scripts_data()
                 if success:
                     QMessageBox.information(self, "上传成功", "数据已成功上传到云端！")
                     self.status_label.setText("数据上传成功")
@@ -1675,6 +1473,15 @@ class AssistantMainWindow(QMainWindow):
             )
 
             if reply == QMessageBox.Yes:
+                # 先设置 API 管理器与用户ID
+                self.data_adapter.api_manager = self.api_manager
+                uid = 0
+                try:
+                    uid = int(self.current_user_id) if (
+                            self.current_user_id is not None and str(self.current_user_id).isdigit()) else 0
+                except:
+                    uid = 0
+                self.data_adapter.user_id = uid
                 success = self.data_adapter.load_user_data()
                 if success:
                     self.load_data_from_adapter()
@@ -1801,7 +1608,8 @@ class AssistantMainWindow(QMainWindow):
             return
 
         delta = global_pos - self.resize_start_pos
-        new_geometry = QRect(self.resize_start_geometry)
+        geom = self.resize_start_geometry or self.geometry()
+        new_geometry = QRect(geom)
 
         if self.resize_direction and "left" in self.resize_direction:
             new_geometry.setLeft(new_geometry.left() + delta.x())
@@ -1854,23 +1662,22 @@ class AssistantMainWindow(QMainWindow):
                         level_two_category_id: Optional[int] = 0):
         """显示添加内容弹窗并设置默认类型"""
         try:
-            # 获取用户权限
-            user_permissions = self.get_user_permissions()
-
             # 创建并显示添加弹窗
-            add_dialog = AddDialog(self.scripts_data, self, False, self.script_type_dict,
-                                   self.level_one_category_dict, self.level_two_category_dict)
+            add_dialog = AddDialog(
+                {"scripts_data": (self.data_adapter.get_scripts_data() if self.data_adapter else self.scripts_data)},
+                self, False)
             # 设置默认类型
-            add_dialog.set_add_mode(add_type, script_type_id, level_one_category_id, level_two_category_id)
+            add_dialog.set_add_mode(add_type, int(script_type_id or 0), int(level_one_category_id or 0),
+                                    int(level_two_category_id or 0))
 
             # 连接新增信号
             if add_type == 'level_one_category':
-                add_dialog.level_one_category_added_signal.connect(self.add_script_category_callback)
+                add_dialog.level_one_added_signal.connect(self.add_script_category_callback)
             elif add_type == 'level_two_category':
-                add_dialog.level_two_category_added_signal.connect(self.add_script_title_callback)
+                add_dialog.level_two_added_signal.connect(self.add_script_title_callback)
             elif add_type == 'script':
-                add_dialog.level_one_category_added_signal.connect(self.add_script_category_callback)
-                add_dialog.level_two_category_added_signal.connect(self.add_script_title_callback)
+                add_dialog.level_one_added_signal.connect(self.add_script_category_callback)
+                add_dialog.level_two_added_signal.connect(self.add_script_title_callback)
                 add_dialog.content_added_signal.connect(self.add_script_content_callback)
 
             # 连接弹窗关闭信号
@@ -1902,16 +1709,20 @@ class AssistantMainWindow(QMainWindow):
             level_one_category_data = {
                 'name': value,
                 "script_type_id": script_type_id,
-                "level_one_category_id": utils.generate_guid(),
+                "level_one_category_id": None,
                 "data": []
             }
             self.scripts_data[tab_data_index]['data'].append(level_one_category_data)
             self.update_current_level_one_category_dict(self.scripts_data[tab_data_index]['data'])
-            if script_type_id == self.current_type_tab_id:
-                self.update_secondary_tabs()
+            if script_type_id == self.current_type_id:
+                self.update_level_one_tabs()
                 self.load_current_scripts_data()
             # 保存数据
             self.save_scripts()
+            # 保存后重建索引并刷新最新数据
+            if self.data_adapter:
+                self.data_adapter.init_data()
+                self.load_data_from_adapter()
 
         except Exception as e:
             QMessageBox.critical(self, "错误", f"添加话术分类失败：{str(e)}")
@@ -1942,15 +1753,19 @@ class AssistantMainWindow(QMainWindow):
                 'name': value,
                 "script_type_id": script_type_id,
                 "level_one_category_id": level_one_category_id,
-                "level_two_category_id": utils.generate_guid(),
+                "level_two_category_id": None,
                 "data": []
             }
             self.scripts_data[tab_data_index]['data'][level_one_category_data_index]['data'].append(
                 level_two_category_data)
-            if level_one_category_id == self.current_level_one_category_id:
+            if level_one_category_id == self.current_level_one_id:
                 self.load_current_scripts_data()
             # 保存数据
             self.save_scripts()
+            # 保存后重建索引并刷新最新数据
+            if self.data_adapter:
+                self.data_adapter.init_data()
+                self.load_data_from_adapter()
         except Exception as e:
             QMessageBox.critical(self, "错误", f"添加话术标题失败：{str(e)}")
 
@@ -1988,7 +1803,7 @@ class AssistantMainWindow(QMainWindow):
                 "script_type_id": script_type_id,
                 "level_one_category_id": level_one_category_id,
                 "level_two_category_id": level_two_category_id,
-                "script_id": utils.generate_guid()
+                "script_id": None
             }
             self.scripts_data[tab_data_index]['data'][level_one_category_data_index]['data'][
                 level_two_category_data_index]['data'].append(script_data)
@@ -1996,36 +1811,32 @@ class AssistantMainWindow(QMainWindow):
             self.load_current_scripts_data()
             # 保存数据
             self.save_scripts()
+            # 保存后重建索引并刷新最新数据
+            if self.data_adapter:
+                self.data_adapter.init_data()
+                self.load_data_from_adapter()
 
         except Exception as e:
             QMessageBox.critical(self, "错误", f"添加话术内容失败：{str(e)}")
 
     # <============================修改功能（话术分类、话术标题、话术内容）==============================>
 
-    def show_edit_dialog(self, edit_type: str, old_value: str, script_type_id: Optional[int] = 0,
-                         level_one_category: Optional[int] = 0, level_two_category: Optional[int] = 0,
-                         script_id: Optional[int] = 0, ):
+    def show_edit_dialog(self, edit_type: str, id: int):
         """显示编辑对话框"""
         try:
-            # 获取用户权限
-            user_permissions = self.get_user_permissions()
-
             # 创建编辑对话框
-            edit_dialog = AddDialog(self.scripts_data, self, True, self.script_type_dict,
-                                    self.level_one_category_dict, self.level_two_category_dict,
-                                    right_click_data=self.right_click_data)
+            edit_dialog = AddDialog(self, True)
 
             # 设置编辑模式
-            edit_dialog.set_edit_mode(edit_type, old_value, script_type_id, level_one_category, level_two_category,
-                                      script_id)
+            edit_dialog.set_edit_mode(edit_type, id)
 
             # 连接编辑信号
-            if edit_type == 'level_one_category':
-                edit_dialog.level_one_category_edited_signal.connect(self.edit_script_category_callback)
-            elif edit_type == 'level_two_category':
-                edit_dialog.level_two_category_edited_signal.connect(self.edit_script_title_callback)
+            if edit_type == 'level_one':
+                edit_dialog.level_one_edited_signal.connect(self.edit_level_one_callback)
+            elif edit_type == 'level_two':
+                edit_dialog.level_two_edited_signal.connect(self.edit_level_two_callback)
             elif edit_type == 'script':
-                edit_dialog.content_edited_signal.connect(self.edit_script_content_callback)
+                edit_dialog.content_edited_signal.connect(self.edit_script_callback)
 
             # 连接弹窗关闭信号
             edit_dialog.accepted.connect(lambda: self.status_label.setText("✅ 编辑成功"))
@@ -2039,112 +1850,86 @@ class AssistantMainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "错误", f"显示编辑对话框失败：{str(e)}")
 
-    def edit_script_category_callback(self, script_type_id: int, level_one_category_id: int, new_value: str):
-        """编辑话术分类"""
+    def edit_level_one_callback(self, level_one_id: int, new_value: str):
+        """编辑话术分类（使用 DataAdapter）"""
         try:
-            arr = list(self.level_one_category_dict.keys())
-            index = arr.index(level_one_category_id)
-            if index >= 0 and index < len(arr):
-                self.current_type_tab_data['data'][index]['name'] = new_value
-                self.update_current_level_one_category_dict(self.current_type_tab_data['data'])
-                self.update_secondary_tabs()
-                # 保存数据
-                self.save_scripts()
-            else:
-                QMessageBox.warning(self, "警告", "话术分类名称已存在！")
+            if self.data_adapter:
+                success = self.data_adapter.edit_level_one_name(level_one_id, new_value)
+                if success:
+                    self.update_ui('edit_level_one')
+                else:
+                    QMessageBox.warning(self, "警告", "编辑失败：未找到该分类或ID无效")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"编辑话术分类失败: {str(e)}")
 
-    def edit_script_title_callback(self, script_type_id: int, level_one_category_id: int, level_two_category_id: int,
-                                   new_value: str):
-        """编辑话术标题"""
+    def edit_level_two_callback(self, script_type_id: int, level_one_category_id: int, level_two_category_id: int,
+                                new_value: str):
+        """编辑话术标题（使用 DataAdapter）"""
         try:
-            arr = list(self.level_two_category_dict.keys())
-            index = arr.index(level_two_category_id)
-            if index >= 0 and index < len(arr):
-                self.current_level_two_category_data[index]['name'] = new_value
-                self.update_current_level_two_category_tab_data(self.current_level_two_category_data)
-                # 更新展示数据
+            if not self.data_adapter:
+                QMessageBox.critical(self, "错误", "数据适配器未初始化")
+                return
+            success = self.data_adapter.edit_level_two_name(level_two_category_id, new_value)
+            if success:
+                self.load_data_from_adapter()
                 self.load_current_scripts_data()
                 self.update_tree()
-                # 保存数据
-                self.save_scripts()
             else:
-                QMessageBox.warning(self, "警告", "话术标题名称已存在！")
+                QMessageBox.warning(self, "警告", "编辑失败：未找到该标题或ID无效")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"编辑话术标题失败: {str(e)}")
 
-    def edit_script_content_callback(self, script_type_id: int, level_one_category_id: int, level_two_category_id: int,
-                                     script_id: int, new_value: str, script_title_value: str):
-        """编辑话术内容"""
+    def edit_script_callback(self, script_type_id: int, level_one_category_id: int, level_two_category_id: int,
+                             script_id: int, new_value: str, script_title_value: str):
+        """编辑话术内容（使用 DataAdapter）"""
         try:
-            if self.is_search == False:
-                arr = list(self.level_two_category_dict.keys())
-                index = arr.index(level_two_category_id)
-                if index >= 0 and index < len(arr):
-                    for script_data_index, script_data in enumerate(
-                            self.current_level_two_category_data[index]['data']):
-                        if script_data['script_id'] == script_id:
-                            self.current_level_two_category_data[index]['data'][script_data_index][
-                                'content'] = new_value
-                            self.current_level_two_category_data[index]['data'][script_data_index][
-                                'title'] = script_title_value
-                    # 更新展示数据
+            if not self.data_adapter:
+                QMessageBox.critical(self, "错误", "数据适配器未初始化")
+                return
+            success = self.data_adapter.edit_script(script_id, title=script_title_value, content=new_value)
+            if success:
+                if self.is_search:
+                    self.on_search_changed(self.search_text)
+                else:
                     self.load_current_scripts_data()
                     self.update_tree()
-                    # 保存数据
-                    self.save_scripts()
-            elif self.is_search:
-                self.on_search_changed(self.search_text)
             else:
-                QMessageBox.warning(self, "警告", "话术内容已存在！")
+                QMessageBox.warning(self, "警告", "编辑失败：未找到该话术或ID无效")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"编辑话术内容失败: {str(e)}")
 
     # <============================删除功能（话术分类、话术标题、话术内容）==============================>
 
-    def delete_secondary_tab(self, script_type_id: int, level_one_category_id: int, level_one_category_name: str):
-        """删除话术分类"""
-        if len(self.current_type_tab_data['data']) <= 1:
+    def delete_level_one(self, level_one_id: int, level_one_name: str):
+        """删除话术分类（使用 DataAdapter）"""
+        # 使用数据适配器的索引获取真实的一级分类数量进行校验
+        level_one_list = self.data_adapter.get_level_one_list(self.current_type_id) or []
+        if len(level_one_list) <= 1:
             QMessageBox.warning(self, "警告", "至少需要保留一个一级分类！")
             return
 
         reply = QMessageBox.question(
             self, "确认删除",
-            f"确定要删除一级分类 '{level_one_category_name}' 及其所有话术吗？",
+            f"确定要删除一级分类 '{level_one_name}' 及其所有话术吗？",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
 
         if reply == QMessageBox.Yes:
             try:
-                id_arr = list(self.level_one_category_dict.keys())
-                index = id_arr.index(level_one_category_id)
-
-                if level_one_category_id in id_arr:
-                    for tab_data in self.scripts_data:
-                        if tab_data['script_type_id'] == script_type_id:
-                            # tab_data['data']
-                            del tab_data['data'][index]
-
-                if self.current_level_one_category_id == level_one_category_id:
-                    self.update_current_level_one_category_tab_data(self.current_type_tab_data['data'][0])
-
-                self.update_current_level_one_category_dict(self.current_type_tab_data['data'])
-                self.update_secondary_tabs()
-                self.load_current_scripts_data()
-
-                # 保存数据
-                self.save_scripts()
+                success = self.data_adapter.delete_level_one(level_one_id)
+                if success:
+                    self.update_ui('delete_level_one')
+                else:
+                    QMessageBox.warning(self, "错误", "删除失败：未找到该分类或ID无效")
             except Exception as e:
                 QMessageBox.critical(self, "错误", f"删除失败: {str(e)}")
 
-    def delete_script_title(self, script_type_id: int, level_one_category_id: int, level_two_category_id: int,
-                            level_two_category_name: str):
-        """删除分类标题"""
+    def delete_level_two(self, level_two_id: int, level_two_name: str):
+        """删除分类标题（使用 DataAdapter）"""
         reply = QMessageBox.question(
             self, "确认删除",
-            f"确定要删除二级分类 '{level_two_category_name}' 及其所有话术吗？",
+            f"确定要删除二级分类 '{level_two_name}' 及其所有话术吗？",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
@@ -2152,34 +1937,23 @@ class AssistantMainWindow(QMainWindow):
         if reply == QMessageBox.Yes:
             try:
                 if self.is_search:
-                    arr = category.split('-')
-                    type = arr[0]
-                    category_name = arr[1]
-                    title = arr[2]
-                    del self.filtered_scripts[category]
-                    del self.scripts_data[type][category_name][title]
+                    QMessageBox.warning(self, "警告", "搜索结果中暂不支持删除，请清空搜索后再操作。")
+                    return
+                success = self.data_adapter.delete_level_two(level_two_id)
+                if success:
+                    self.load_current_scripts_data()
+                    self.update_tree()
                 else:
-                    id_arr = list(self.level_two_category_dict.keys())
-                    index = id_arr.index(level_two_category_id)
-                    if level_two_category_id in id_arr:
-                        for level_two_category_data in self.current_level_one_category_data['data']:
-                            if level_two_category_data['level_two_category_id'] == level_two_category_id:
-                                del self.current_level_one_category_data['data'][index]
-
-                self.load_current_scripts_data()
-                self.save_scripts()
-                self.update_tree()
+                    QMessageBox.warning(self, "错误", "找不到要删除的话术标题或ID无效！")
             except Exception as e:
-                print('ValueError', e)
-                QMessageBox.warning(self, "错误", "找不到要删除的话术！")
+                QMessageBox.critical(self, "错误", f"删除失败: {str(e)}")
 
-    def delete_script_content(self, data: Dict[str, Any]):
+    def delete_script(self, script_id: int):
         """删除话术"""
-        content = data.get("content", 0)
-        script_type_id = data.get("script_type_id", 0)
-        level_one_category_id = data.get("level_one_category_id", 0)
-        level_two_category_id = data.get("level_two_category_id", 0)
-        script_id = data.get("script_id", 0)
+        data = self.data_adapter.get_script_data(script_id)
+        content = data.get("content")
+        script_id = data.get("id")
+
         reply = QMessageBox.question(
             self, "确认删除",
             f"确定要删除话术:\n{content[:100]}{'...' if len(content) > 100 else ''}",
@@ -2190,28 +1964,13 @@ class AssistantMainWindow(QMainWindow):
         if reply == QMessageBox.Yes:
             try:
                 if self.is_search:
-                    arr = title.split('-')
-                    type = arr[0]
-                    category = arr[1]
-                    title_name = arr[2]
-                    self.filtered_scripts[title].remove(content)
-                    self.scripts_data[type][category][title_name].remove(content)
-                else:
-                    script_type_data_arr = list(self.script_type_dict.keys())
-                    tab_data_index = script_type_data_arr.index(script_type_id)
-
-                    level_one_category_arr = list(self.level_one_category_dict.keys())
-                    level_one_category_data_index = level_one_category_arr.index(level_one_category_id)
-
-                    level_two_category_arr = list(self.level_two_category_dict.keys())
-                    level_two_category_data_index = level_two_category_arr.index(level_two_category_id)
-                    for script_data in self.scripts_data[tab_data_index]['data'][level_one_category_data_index]['data'][
-                        level_two_category_data_index]['data']:
-                        if script_data['script_id'] == script_id:
-                            self.scripts_data[tab_data_index]['data'][level_one_category_data_index]['data'][
-                                level_two_category_data_index]['data'].remove(script_data)
-                self.save_scripts()
-                self.update_tree()
+                    QMessageBox.warning(self, "警告", "搜索结果中暂不支持删除，请清空搜索后再操作。")
+                    return
+                success = self.data_adapter.delete_script(script_id)
+                if success:
+                    self.save_scripts()
+                    self.load_current_scripts_data()
+                    self.update_tree()
             except Exception as e:
                 print('ValueError', e)
                 QMessageBox.warning(self, "错误", "找不到要删除的话术！")

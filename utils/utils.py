@@ -28,6 +28,5 @@ def init_config_data():
     return config_data
 
 
-def generate_guid():
-    random_id = random.randint(1000, 9999)
-    return random_id
+def generate_id():
+    return int(time.time())

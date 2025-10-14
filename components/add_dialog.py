@@ -22,13 +22,13 @@ class AddDialog(QDialog):
 
     # 信号定义
     level_one_added_signal = Signal(int, str)  # 话术类型ID, 一级分类名称
-    level_two_added_signal: Signal = Signal(int, int, str)  # 话术类型ID, 一级分类ID, 二级分类名称
-    content_added_signal = Signal(int, int, int, str, str)  # 话术类型ID, 一级分类ID, 二级分类ID, 话术内容,话术标题
+    level_two_added_signal: Signal = Signal(int, str)  # 一级分类ID, 二级分类名称
+    content_added_signal = Signal(int, str, str)  # 二级分类ID, 话术内容,话术标题
 
     # 编辑信号定义
-    level_one_edited_signal = Signal(int, str)  # 话术类型ID, 一级分类ID, 新一级分类名称
-    level_two_edited_signal = Signal(int, int, int, str)  # 话术类型ID, 一级分类ID, 二级分类ID, 新二级分类名
-    content_edited_signal = Signal(int, int, int, int, str, str)  # 话术类型ID, 一级分类ID, 二级分类ID, 话术内容ID，新话术内容,话术标题
+    level_one_edited_signal = Signal(int, str)  # 一级分类ID, 新一级分类名称
+    level_two_edited_signal = Signal(int, str)  # 二级分类ID, 新二级分类名
+    content_edited_signal = Signal(int, str, str)  # 话术内容ID，新话术内容,话术标题
 
     def __init__(self, parent=None, edit_mode=False):
         super().__init__(parent)
@@ -45,23 +45,9 @@ class AddDialog(QDialog):
         self.add_type = None  # 'primary', 'level_one', 'level_two'
         self.old_value = None
         self.type_id = 0
-        self.tab_type_name = None
         self.level_one_id = 0
-        self.level_one_name = None
         self.level_two_id = 0
-        self.level_two_name = None
         self.script_id = 0
-        self.script_content = None
-
-        # Tab数据结构
-        self.current_type_tab_id = 0
-        self.current_level_one_id = 0
-        self.current_level_two_id = 0
-
-        # 当前选中Tab数据
-        self.current_script_type_data = {}
-        self.current_level_one_data = {}
-        self.current_level_two_data = []
 
         # 初始化标志
         self._user_triggered_change = False
@@ -221,7 +207,6 @@ class AddDialog(QDialog):
         # 下拉框变化
         self.script_type_combo.currentTextChanged.connect(self.update_level_one_combo)
         self.level_one_combo.currentTextChanged.connect(self.update_level_two_combo)
-        self.level_two_combo.currentTextChanged.connect(self.update_level_two_data)
 
         # 按钮点击
         self.cancel_btn.clicked.connect(self.reject)
@@ -364,13 +349,6 @@ class AddDialog(QDialog):
                 self.level_two_combo.addItem(level_two_data['name'],
                                              level_two_data['id'])
 
-    def update_level_two_data(self):
-        level_two_id = self.level_two_combo.currentData()
-        if self.data_adapter and level_two_id:
-            data = self.data_adapter.get_level_two_data(level_two_id)
-            self.current_level_two_id = data['id']
-            self.current_level_two_data = data
-
     def on_confirm(self):
         """确认添加或编辑"""
         if self.edit_mode:
@@ -405,8 +383,8 @@ class AddDialog(QDialog):
         try:
             if add_type == 0:
                 # 添加一级分类
-                # 检查是否已存在
-                result = list(filter(lambda item: item['name'] == value, self.current_script_type_data['data']))
+                result = list(
+                    filter(lambda item: item['name'] == value, self.data_adapter.get_level_one_list(self.type_id)))
                 if len(result) > 0:
                     QMessageBox.warning(self, "警告", f"一级分类 '{value}' 已存在！")
                     return
@@ -414,19 +392,30 @@ class AddDialog(QDialog):
 
             elif add_type == 1:
                 # 添加二级分类
+                if not type_id:
+                    QMessageBox.warning(self, "警告", "请选择话术类型！")
+                    return
                 if not level_one_id:
                     QMessageBox.warning(self, "警告", f"请选择一级分类！")
-                result = list(filter(lambda item: item['name'] == value, self.current_level_two_data))
+                    return
+
+                result = list(
+                    filter(lambda item: item['name'] == value,
+                           self.data_adapter.get_level_two_list(self.type_id, self.level_one_id)))
                 if len(result) > 0:
                     QMessageBox.warning(self, "警告", f"二级分类 '{value}' 已存在！")
                     return
 
-                self.level_two_added_signal.emit(type_id, level_one_id, value)
+                self.level_two_added_signal.emit(level_one_id, value)
 
             elif add_type == 2:
                 # 添加话术内容
                 script_title_value = self.script_title_input.text().strip()
                 content = self.content_input.toPlainText().strip()
+
+                if not type_id:
+                    QMessageBox.warning(self, "警告", "请选择话术类型！")
+                    return
 
                 if not level_one_id:
                     QMessageBox.warning(self, "警告", "请选择一级分类！")
@@ -440,36 +429,22 @@ class AddDialog(QDialog):
                     QMessageBox.warning(self, "警告", "请输入话术内容！")
                     return
 
-                # level_two_arr = list(self.level_two_dict.keys())
-                # level_two_index = level_two_arr.index(level_two_id)
-                # result = list(filter(lambda item: item['content'] == content,
-                #                      self.current_level_two_data[level_two_index]['data']))
-
-                result = list(filter(lambda item: item['type_id'] == type_id, self.scripts_data))
-                tab_data_index = self.scripts_data.index(result[0])
-                result2 = list(
-                    filter(lambda item: item['level_one_id'] == level_one_id, result[0]['data']))
-                level_one_data_index = result[0]['data'].index(result2[0])
-
-                result3 = list(
-                    filter(lambda item: item['level_two_id'] == level_two_id, result2[0]['data']))
-                level_two_data_index = result2[0]['data'].index(result3[0])
-
-                result4 = list(
-                    filter(lambda item: item['content'] == content, result3[0]['data']))
-
-                # 检查是否已存在
-                if len(result4) > 0:
+                print('1111111',self.data_adapter.get_script_list(self.type_id, self.level_one_id,
+                                                                       self.level_two_id))
+                result = list(filter(lambda item: item['content'] == content,
+                                     self.data_adapter.get_script_list(self.type_id, self.level_one_id,
+                                                                       self.level_two_id)))
+                if len(result) > 0:
                     QMessageBox.warning(self, "警告", f"话术内容 '{content}' 已存在！")
                     return
-                self.content_added_signal.emit(type_id, level_one_id, level_two_id, content,
-                                               script_title_value)
+
+                self.content_added_signal.emit(level_two_id, content, script_title_value)
 
             # 成功添加后关闭对话框
             self.accept()
 
         except Exception as e:
-            QMessageBox.critical(self, "错误", f"添加失败：{str(e)}")
+            QMessageBox.critical(self, "错误", f"弹窗中，添加失败：{str(e)}")
 
     def handle_edit_confirm(self):
         """处理编辑确认"""
@@ -515,8 +490,7 @@ class AddDialog(QDialog):
                 if len(result) > 0:
                     QMessageBox.warning(self, "警告", f"二级分类 '{new_value}' 已存在！")
                     return
-                self.level_two_edited_signal.emit(self.type_id, self.level_one_id,
-                                                  self.level_two_id, new_value)
+                self.level_two_edited_signal.emit(self.level_two_id, new_value)
 
             elif self.edit_type == 'script':
                 # 编辑话术内容
@@ -526,9 +500,7 @@ class AddDialog(QDialog):
                 if len(result) > 0:
                     QMessageBox.warning(self, "警告", f"话术 '{new_value}' 已存在！")
                     return
-                self.content_edited_signal.emit(self.type_id, self.level_one_id,
-                                                self.level_two_id, self.script_id, new_value,
-                                                script_title_value)
+                self.content_edited_signal.emit(self.script_id, new_value, script_title_value)
 
             # 成功编辑后关闭对话框
             self.accept()
@@ -614,25 +586,36 @@ class AddDialog(QDialog):
     def showEvent(self, event):
         """显示事件"""
         super().showEvent(event)
-
         # 只有在没有设置默认值的情况下才更新下拉框数据
+        print('_defaults_set', self._defaults_set)
         if not getattr(self, '_defaults_set', False):
             print("showEvent: 更新下拉框数据")
             self.update_script_type_combo()
         else:
             print("showEvent: 跳过下拉框数据更新，因为已设置默认值")
 
-    def set_add_mode(self, add_type: str, type_id: int = 0, level_one_id: int = 0,
-                     level_two_id: int = 0):
+    def set_add_mode(self, add_type: str, id: int = 0):
         """设置新增模式"""
-
-        self.add_type = add_type
-        self.type_id = type_id
-        self.level_one_id = level_one_id
-        self.level_two_id = level_two_id
-
+        print('id',id)
         # 设置添加类型('level_one', 'level_two', 'script')
         self.set_default_type(add_type)
+
+        self.add_type = add_type
+        if add_type == 'level_one':
+            data = self.data_adapter.get_type_data(id)
+            self.type_id = data.get("id", 0)
+
+        elif add_type == 'level_two':
+            data = self.data_adapter.get_level_one_data(id)
+            self.type_id = data.get("typeId", 0)
+            self.level_one_id = data.get("id", 0)
+
+        elif add_type == 'script':
+            data = self.data_adapter.get_level_two_data(id)
+            self.type_id = data.get("typeId", 0)
+            self.level_one_id = data.get("levelOneId", 0)
+            self.level_two_id = data.get("id", 0)
+
         if add_type != 'script':
             self.hide_label_by_text('添加类型:')
             self.add_level_one_radio.setVisible(False)
@@ -644,18 +627,18 @@ class AddDialog(QDialog):
             # 添加一级分类
             # 更新窗口标题和按钮文本
             self.setWindowTitle("新增一级分类")
-            self.set_default_values(type_id)
+            self.set_default_values(self.type_id)
         elif add_type == 'level_two':
             # 新增二级分类
             # 更新窗口标题和按钮文本
             self.setWindowTitle("新增二级分类")
-            self.set_default_values(type_id, level_one_id)
+            self.set_default_values(self.type_id, self.level_one_id)
 
         elif add_type == 'script':
             # 新增话术内容
             # 更新窗口标题和按钮文本
             self.setWindowTitle("新增话术内容")
-            self.set_default_values(type_id, level_one_id, level_two_id)
+            self.set_default_values(self.type_id, self.level_one_id, self.level_two_id)
 
     def set_edit_mode(self, edit_type: str, id: int):
         """设置编辑模式"""
@@ -681,13 +664,13 @@ class AddDialog(QDialog):
             self.level_two_id = data.get("id", None)
 
         elif edit_type == 'script':
-            data = self.data_adapter.get_level_two_data(id)
+            data = self.data_adapter.get_script_data(id)
             old_value = data.get("content")
             script_title = data.get("title", '')
-            self.type_id = data.get("typeId", None)
-            self.level_one_id = data.get("levelOneId", None)
-            self.level_two_id = data.get("levelTwoId", None)
-            self.script_id = data.get("id", None)
+            self.type_id = data.get("typeId", 0)
+            self.level_one_id = data.get("levelOneId", 0)
+            self.level_two_id = data.get("levelTwoId", 0)
+            self.script_id = data.get("id", 0)
 
         # 根据编辑类型设置UI
         if edit_type == 'level_one':
@@ -758,11 +741,9 @@ class AddDialog(QDialog):
                                                     else:
                                                         self.level_two_combo.setCurrentIndex(
                                                             level_two_index)
-
             # 标记默认值设置完成
             self._setting_defaults = False
             self._defaults_set = True
-
         except Exception as e:
             print(f"❌ 设置默认值失败: {e}")
             import traceback

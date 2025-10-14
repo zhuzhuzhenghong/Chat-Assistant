@@ -12,7 +12,7 @@ class ThemeManager:
     
     def __init__(self):
         self.styles_dir = Path(__file__).parent
-        self.settings = QSettings("聚雍宝", "ThemeSettings")
+        self.settings = QSettings("秒回", "ThemeSettings")
         self.current_theme = self.settings.value("current_theme", "modern")
         
         # 可用主题列表

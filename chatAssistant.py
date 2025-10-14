@@ -1825,6 +1825,9 @@ class AssistantMainWindow(QMainWindow):
             try:
                 success = self.data_adapter.delete_level_one(level_one_id)
                 if success:
+                    if self.current_level_one_id == level_one_id:
+                        id_list = self.data_adapter.type_children_idList_byIds.get(self.current_type_id)
+                        self.current_level_one_id = id_list[0]
                     self.update_ui('delete_level_one')
                 else:
                     QMessageBox.warning(self, "错误", "删除失败：未找到该分类或ID无效")

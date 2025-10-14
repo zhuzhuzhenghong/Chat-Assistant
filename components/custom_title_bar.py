@@ -135,7 +135,7 @@ class CustomTitleBar(QWidget):
         layout.setSpacing(4)
         
         # 标题标签
-        self.title_label = QLabel("聚雍宝")
+        self.title_label = QLabel("秒回")
         self.title_label.setStyleSheet("""
             QLabel {
                 color: #333;

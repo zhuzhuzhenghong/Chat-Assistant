@@ -491,7 +491,6 @@ class AssistantMainWindow(QMainWindow):
         try:
             # 初始化数据适配器
             self.data_adapter = DataAdapter()
-            print('111111')
             # 初始化API管理器
             self.api_manager = APIManager()
 
@@ -518,14 +517,14 @@ class AssistantMainWindow(QMainWindow):
         if self.data_adapter:
             # 获取话术数据
             self.scripts_data = self.data_adapter.get_scripts_data()
+
             # 设置当前选中类型id
-            if not self.current_type_id:
-                print('self.data_adapter.all_type_id_list',self.data_adapter.all_type_id_list)
+            if self.current_type_id not in self.data_adapter.all_type_id_list:
                 self.current_type_id = self.data_adapter.all_type_id_list[0]
 
             # 设置当前选中一级分类id
-            if self.current_type_id and not self.current_level_one_id:
-                level_one_list = self.data_adapter.get_level_one_list(self.current_type_id)
+            level_one_list = self.data_adapter.get_level_one_list(self.current_type_id)
+            if self.current_level_one_id not in level_one_list:
                 self.current_level_one_id = level_one_list[0]['id']
 
     def sync_cloud_data(self):
@@ -739,22 +738,38 @@ class AssistantMainWindow(QMainWindow):
     def update_all_ui(self):
         """更新所有界面元素"""
         self.update_type_tabs()
-        self.update_level_one_tabs()
+        self.update_level_one_tabs(True)
         self.update_tree()
         self.update_login_status()
-    def update_ui(self, updateType: str):
-        print('updateType', updateType)
-        if updateType == 'type':
+
+    def update_ui(self, type: str):
+        print('type', type)
+        if type == 'switch_type':
             self.update_level_one_tabs()
             self.load_current_scripts_data()
-        elif updateType == 'level_one':
+
+        if type == 'switch_level_one':
             self.load_current_scripts_data()
-        elif updateType == 'edit_level_one':
+        elif type == 'add_level_one':
             self.update_level_one_tabs()
-            self.load_data_from_adapter()
-        elif updateType == 'delete_level_one':
-            self.load_data_from_adapter()
+        elif type == 'edit_level_one':
             self.update_level_one_tabs()
+        elif type == 'delete_level_one':
+            self.update_level_one_tabs()
+            self.load_current_scripts_data()
+
+        if type == 'add_level_two':
+            self.load_current_scripts_data()
+        elif type == 'edit_level_two':
+            self.load_current_scripts_data()
+        elif type == 'delete_level_two':
+            self.load_current_scripts_data()
+
+        if type == 'add_script':
+            self.load_current_scripts_data()
+        elif type == 'edit_script':
+            self.load_current_scripts_data()
+        elif type == 'delete_script':
             self.load_current_scripts_data()
 
         if self.is_search:
@@ -766,7 +781,6 @@ class AssistantMainWindow(QMainWindow):
         # 清空现有Tab
         self.type_tab_widget.clear()
         self.primary_tabs.clear()
-        print('333333')
 
         # 添加新Tab
         if self.scripts_data:
@@ -784,12 +798,11 @@ class AssistantMainWindow(QMainWindow):
             if self.current_type_id in idList:
                 index = idList.index(self.current_type_id)
                 self.type_tab_widget.setCurrentIndex(index)
-
                 self.update_level_one_tabs()
             else:
                 print('未找到当前一级tab选中值')
 
-    def update_level_one_tabs(self):
+    def update_level_one_tabs(self, first: Optional[bool] = False):
         """更新话术分类Tab（按钮形式）"""
         # 清空现有按钮
         for button in self.level_one_tab_buttons.values():
@@ -878,7 +891,7 @@ class AssistantMainWindow(QMainWindow):
                 y += button_height + button_spacing
 
             add_button.clicked.connect(
-                lambda checked: self.show_add_dialog('level_one_category', self.current_type_id))
+                lambda checked: self.show_add_dialog('level_one', self.current_type_id))
 
             # 设置位置
             add_button.move(x, y)
@@ -898,7 +911,8 @@ class AssistantMainWindow(QMainWindow):
             self.level_one_buttons_widget.setMinimumHeight(new_height)
             self.level_one_buttons_widget.setMaximumHeight(new_height)
 
-            self.load_current_scripts_data()
+            if first:
+                self.load_current_scripts_data()
 
     def update_tree(self):
         """更新树形列表"""
@@ -913,7 +927,7 @@ class AssistantMainWindow(QMainWindow):
 
             # 添加话术内容
             if isinstance(title_data['data'], list):
-                for index, script_data in enumerate(title_data['data']):
+                for script_data in title_data['data']:
                     display_text = script_data['content'] if len(script_data['content']) <= 50 else script_data[
                                                                                                         'content'][
                                                                                                     :50] + "..."
@@ -923,7 +937,6 @@ class AssistantMainWindow(QMainWindow):
                         "id": script_data['id'],
                         "content": script_data['content'],
                         "title": script_data['title'],
-                        "index": index
                     })
                     category_item.addChild(script_item)
             category_item.setExpanded(True)
@@ -1008,7 +1021,7 @@ class AssistantMainWindow(QMainWindow):
                 self.current_level_one_id = level_one_list[0]['id']
 
                 # 刷新
-                self.update_ui('type')
+                self.update_ui('switch_type')
 
     # <============================话术分类点击事件相关方法==============================>
 
@@ -1026,7 +1039,7 @@ class AssistantMainWindow(QMainWindow):
                         self.clear_search()
 
             # 刷新
-            self.update_ui('level_one')
+            self.update_ui('switch_level_one')
 
     def show_level_one_button_context_menu(self, position, type_id: int, level_one_id: int,
                                            level_one_name: str):
@@ -1094,14 +1107,14 @@ class AssistantMainWindow(QMainWindow):
             # 点击空白区域的菜单
             add_title_action = QAction("添加话术标题", self)
             add_title_action.triggered.connect(
-                lambda checked: self.show_add_dialog('level_two_category', self.current_type_id,
-                                                     self.current_level_one_id))  # 1表示添加话术标题
+                lambda checked: self.show_add_dialog('level_two', self.current_level_one_id))
             menu.addAction(add_title_action)
 
             add_script_action = QAction("添加话术", self)
+            id_list = self.data_adapter.level_one_children_idList_byIds.get(
+                (self.current_type_id, self.current_level_one_id), 0)
             add_script_action.triggered.connect(
-                lambda checked: self.show_add_dialog('script', self.current_type_id,
-                                                     self.current_level_one_id))  # 2表示添加话术内容
+                lambda checked: self.show_add_dialog('script', id_list[0]))
             menu.addAction(add_script_action)
 
             menu.exec(self.tree_widget.mapToGlobal(position))
@@ -1114,7 +1127,9 @@ class AssistantMainWindow(QMainWindow):
             return
 
         if data.get("type") == "title":
-            # 分类节点菜单
+            if self.is_search:
+                return
+                # 分类节点菜单
             level_two_name = data.get("name")
             level_two_id = data.get("id")
 
@@ -1126,7 +1141,7 @@ class AssistantMainWindow(QMainWindow):
             menu.addSeparator()
             edit_action = QAction("编辑话术标题", self)
             edit_action.triggered.connect(
-                lambda checked=False: self.show_edit_dialog('level_two', level_two_name, level_two_id))
+                lambda checked=False: self.show_edit_dialog('level_two', level_two_id))
             menu.addAction(edit_action)
 
             delete_action = QAction("删除话术标题", self)
@@ -1138,6 +1153,7 @@ class AssistantMainWindow(QMainWindow):
             # 话术节点菜单
             edit_action = QAction("编辑话术", self)
             script_id = data['id']
+            content = data['content']
             self.right_click_data = data
 
             edit_action.triggered.connect(
@@ -1145,7 +1161,7 @@ class AssistantMainWindow(QMainWindow):
             menu.addAction(edit_action)
 
             delete_action = QAction("删除话术", self)
-            delete_action.triggered.connect(lambda checked=False: self.delete_script(script_id))
+            delete_action.triggered.connect(lambda checked=False: self.delete_script(script_id, content))
             menu.addAction(delete_action)
 
         menu.exec(self.tree_widget.mapToGlobal(position))
@@ -1161,22 +1177,19 @@ class AssistantMainWindow(QMainWindow):
         else:
             self.is_search = True
             filtered = []
+            matched_scripts = []
             # 在当前二级分类列表中进行过滤
-            for title_node in self.current_scripts_data:
-                scripts = title_node.get('data', [])
-                matched_scripts = [
-                    s for s in scripts
-                    if self.search_text in (s.get('content', '').lower()) or
-                       self.search_text in (s.get('title', '').lower())
-                ]
-                if matched_scripts:
-                    filtered.append({
-                        'name': title_node.get('name', ''),
-                        'script_type_id': title_node.get('script_type_id', 0),
-                        'level_one_category_id': title_node.get('level_one_category_id', 0),
-                        'level_two_category_id': title_node.get('level_two_category_id', 0),
-                        'data': matched_scripts
-                    })
+            for script_data in self.data_adapter.all_script_data_list:
+                if self.search_text in (script_data.get('content').lower()) or self.search_text in (
+                        script_data.get('title', '').lower()):
+                    matched_scripts.append(script_data)
+
+            if len(matched_scripts):
+                filtered.append({
+                    'id': 0,
+                    'name': '话术',
+                    'data': matched_scripts
+                })
             self.filtered_scripts = filtered
         self.update_tree()
 
@@ -1657,27 +1670,22 @@ class AssistantMainWindow(QMainWindow):
 
     # <============================添加功能（话术分类、话术标题、话术内容）==============================>
 
-    def show_add_dialog(self, add_type: str, script_type_id: Optional[int] = 0,
-                        level_one_category_id: Optional[int] = 0,
-                        level_two_category_id: Optional[int] = 0):
+    def show_add_dialog(self, add_type: str, id: int):
         """显示添加内容弹窗并设置默认类型"""
         try:
             # 创建并显示添加弹窗
-            add_dialog = AddDialog(
-                {"scripts_data": (self.data_adapter.get_scripts_data() if self.data_adapter else self.scripts_data)},
-                self, False)
+            add_dialog = AddDialog(self)
             # 设置默认类型
-            add_dialog.set_add_mode(add_type, int(script_type_id or 0), int(level_one_category_id or 0),
-                                    int(level_two_category_id or 0))
+            add_dialog.set_add_mode(add_type, id)
 
             # 连接新增信号
-            if add_type == 'level_one_category':
-                add_dialog.level_one_added_signal.connect(self.add_script_category_callback)
-            elif add_type == 'level_two_category':
-                add_dialog.level_two_added_signal.connect(self.add_script_title_callback)
+            if add_type == 'level_one':
+                add_dialog.level_one_added_signal.connect(self.add_level_one_callback)
+            elif add_type == 'level_two':
+                add_dialog.level_two_added_signal.connect(self.add_level_two_callback)
             elif add_type == 'script':
-                add_dialog.level_one_added_signal.connect(self.add_script_category_callback)
-                add_dialog.level_two_added_signal.connect(self.add_script_title_callback)
+                add_dialog.level_one_added_signal.connect(self.add_level_one_callback)
+                add_dialog.level_two_added_signal.connect(self.add_level_two_callback)
                 add_dialog.content_added_signal.connect(self.add_script_content_callback)
 
             # 连接弹窗关闭信号
@@ -1692,132 +1700,42 @@ class AssistantMainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "错误", f"显示添加弹窗失败：{str(e)}")
 
-    def add_script_category_callback(self, script_type_id: int, value: str):
+    def add_level_one_callback(self, type_id: int, value: str):
         """处理添加话术分类"""
         try:
-            # if script_type_name not in self.scripts_data:
-            #     QMessageBox.warning(self, "错误", f"话术类型 '{script_type_name}' 不存在！")
-            #     return
-            #
-            # if category_name in self.scripts_data[script_type_name]:
-            #     QMessageBox.warning(self, "警告", f"话术分类 '{category_name}' 已存在！")
-            #     return
-
-            result = list(filter(lambda item: item['script_type_id'] == script_type_id, self.scripts_data))
-            tab_data_index = self.scripts_data.index(result[0])
-
-            level_one_category_data = {
-                'name': value,
-                "script_type_id": script_type_id,
-                "level_one_category_id": None,
-                "data": []
-            }
-            self.scripts_data[tab_data_index]['data'].append(level_one_category_data)
-            self.update_current_level_one_category_dict(self.scripts_data[tab_data_index]['data'])
-            if script_type_id == self.current_type_id:
-                self.update_level_one_tabs()
-                self.load_current_scripts_data()
-            # 保存数据
-            self.save_scripts()
-            # 保存后重建索引并刷新最新数据
             if self.data_adapter:
-                self.data_adapter.init_data()
-                self.load_data_from_adapter()
-
+                success = self.data_adapter.add_level_one(type_id, value)
+                if success:
+                    self.update_ui('add_level_one')
+                else:
+                    QMessageBox.warning(self, "警告", "添加失败")
         except Exception as e:
-            QMessageBox.critical(self, "错误", f"添加话术分类失败：{str(e)}")
+            QMessageBox.critical(self, "错误", f"添加失败: {str(e)}")
 
-    def add_script_title_callback(self, script_type_id: int, level_one_category_id: int, value: str):
+    def add_level_two_callback(self, level_one_id: int, value: str):
         """处理添加话术标题"""
-        print('script_type_id', script_type_id, 'level_one_category_id', level_one_category_id, 'value', value)
         try:
-            # if script_type_name not in self.scripts_data:
-            #     QMessageBox.warning(self, "错误", f"话术类型 '{script_type_name}' 不存在！")
-            #     return
-            #
-            # if category_name not in self.scripts_data[script_type_name]:
-            #     QMessageBox.warning(self, "错误", f"话术分类 '{category_name}' 不存在！")
-            #     return
-            #
-            # if title_name in self.scripts_data[script_type_name][category_name]:
-            #     QMessageBox.warning(self, "警告", f"话术标题 '{title_name}' 已存在！")
-            #     return
-            result = list(filter(lambda item: item['script_type_id'] == script_type_id, self.scripts_data))
-            tab_data_index = self.scripts_data.index(result[0])
-
-            result2 = list(
-                filter(lambda item: item['level_one_category_id'] == level_one_category_id, result[0]['data']))
-            level_one_category_data_index = result[0]['data'].index(result2[0])
-
-            level_two_category_data = {
-                'name': value,
-                "script_type_id": script_type_id,
-                "level_one_category_id": level_one_category_id,
-                "level_two_category_id": None,
-                "data": []
-            }
-            self.scripts_data[tab_data_index]['data'][level_one_category_data_index]['data'].append(
-                level_two_category_data)
-            if level_one_category_id == self.current_level_one_id:
-                self.load_current_scripts_data()
-            # 保存数据
-            self.save_scripts()
-            # 保存后重建索引并刷新最新数据
             if self.data_adapter:
-                self.data_adapter.init_data()
-                self.load_data_from_adapter()
+                success = self.data_adapter.add_level_two(level_one_id, value)
+                if success:
+                    self.update_ui('add_level_two')
+                else:
+                    QMessageBox.warning(self, "警告", "添加失败")
         except Exception as e:
-            QMessageBox.critical(self, "错误", f"添加话术标题失败：{str(e)}")
+            QMessageBox.critical(self, "错误", f"添加失败: {str(e)}")
 
-    def add_script_content_callback(self, script_type_id: str, level_one_category_id: str, level_two_category_id: str,
+    def add_script_content_callback(self, level_two_id: str,
                                     script_content: str, script_title_value: str):
         """添加话术内容回调"""
-        print('script_type_id', script_type_id, 'level_one_category_id', level_one_category_id, 'level_two_category_id',
-              level_two_category_id)
         try:
-            # if script_type_name not in self.scripts_data:
-            #     QMessageBox.warning(self, "错误", f"话术类型 '{script_type_name}' 不存在！")
-            #     return
-            #
-            # if category_name not in self.scripts_data[script_type_name]:
-            #     QMessageBox.warning(self, "错误", f"话术分类 '{category_name}' 不存在！")
-            #     return
-            #
-            # if title_name not in self.scripts_data[script_type_name][category_name]:
-            #     QMessageBox.warning(self, "错误", f"话术标题 '{title_name}' 不存在！")
-            #     return
-
-            result = list(filter(lambda item: item['script_type_id'] == script_type_id, self.scripts_data))
-            tab_data_index = self.scripts_data.index(result[0])
-            result2 = list(
-                filter(lambda item: item['level_one_category_id'] == level_one_category_id, result[0]['data']))
-            level_one_category_data_index = result[0]['data'].index(result2[0])
-
-            result3 = list(
-                filter(lambda item: item['level_two_category_id'] == level_two_category_id, result2[0]['data']))
-            level_two_category_data_index = result2[0]['data'].index(result3[0])
-
-            script_data = {
-                "content": script_content,
-                "title": script_title_value,
-                "script_type_id": script_type_id,
-                "level_one_category_id": level_one_category_id,
-                "level_two_category_id": level_two_category_id,
-                "script_id": None
-            }
-            self.scripts_data[tab_data_index]['data'][level_one_category_data_index]['data'][
-                level_two_category_data_index]['data'].append(script_data)
-
-            self.load_current_scripts_data()
-            # 保存数据
-            self.save_scripts()
-            # 保存后重建索引并刷新最新数据
             if self.data_adapter:
-                self.data_adapter.init_data()
-                self.load_data_from_adapter()
-
+                success = self.data_adapter.add_script(level_two_id, content=script_content, title=script_title_value)
+                if success:
+                    self.update_ui('add_script')
+                else:
+                    QMessageBox.warning(self, "警告", "添加失败")
         except Exception as e:
-            QMessageBox.critical(self, "错误", f"添加话术内容失败：{str(e)}")
+            QMessageBox.critical(self, "错误", f"添加失败: {str(e)}")
 
     # <============================修改功能（话术分类、话术标题、话术内容）==============================>
 
@@ -1862,39 +1780,27 @@ class AssistantMainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "错误", f"编辑话术分类失败: {str(e)}")
 
-    def edit_level_two_callback(self, script_type_id: int, level_one_category_id: int, level_two_category_id: int,
-                                new_value: str):
+    def edit_level_two_callback(self, level_two_id: int, new_value: str):
         """编辑话术标题（使用 DataAdapter）"""
         try:
-            if not self.data_adapter:
-                QMessageBox.critical(self, "错误", "数据适配器未初始化")
-                return
-            success = self.data_adapter.edit_level_two_name(level_two_category_id, new_value)
-            if success:
-                self.load_data_from_adapter()
-                self.load_current_scripts_data()
-                self.update_tree()
-            else:
-                QMessageBox.warning(self, "警告", "编辑失败：未找到该标题或ID无效")
+            if self.data_adapter:
+                success = self.data_adapter.edit_level_two_name(level_two_id, new_value)
+                if success:
+                    self.update_ui('edit_level_two')
+                else:
+                    QMessageBox.warning(self, "警告", "编辑失败：未找到该标题或ID无效")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"编辑话术标题失败: {str(e)}")
 
-    def edit_script_callback(self, script_type_id: int, level_one_category_id: int, level_two_category_id: int,
-                             script_id: int, new_value: str, script_title_value: str):
+    def edit_script_callback(self, script_id: int, new_value: str, script_title_value: str):
         """编辑话术内容（使用 DataAdapter）"""
         try:
-            if not self.data_adapter:
-                QMessageBox.critical(self, "错误", "数据适配器未初始化")
-                return
-            success = self.data_adapter.edit_script(script_id, title=script_title_value, content=new_value)
-            if success:
-                if self.is_search:
-                    self.on_search_changed(self.search_text)
+            if self.data_adapter:
+                success = self.data_adapter.edit_script(script_id, content=new_value, title=script_title_value)
+                if success:
+                    self.update_ui('edit_script')
                 else:
-                    self.load_current_scripts_data()
-                    self.update_tree()
-            else:
-                QMessageBox.warning(self, "警告", "编辑失败：未找到该话术或ID无效")
+                    QMessageBox.warning(self, "警告", "编辑失败：未找到该话术或ID无效")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"编辑话术内容失败: {str(e)}")
 
@@ -1936,24 +1842,16 @@ class AssistantMainWindow(QMainWindow):
 
         if reply == QMessageBox.Yes:
             try:
-                if self.is_search:
-                    QMessageBox.warning(self, "警告", "搜索结果中暂不支持删除，请清空搜索后再操作。")
-                    return
                 success = self.data_adapter.delete_level_two(level_two_id)
                 if success:
-                    self.load_current_scripts_data()
-                    self.update_tree()
+                    self.update_ui('delete_level_two')
                 else:
-                    QMessageBox.warning(self, "错误", "找不到要删除的话术标题或ID无效！")
+                    QMessageBox.warning(self, "错误", "删除失败：未找到该分类或ID无效")
             except Exception as e:
                 QMessageBox.critical(self, "错误", f"删除失败: {str(e)}")
 
-    def delete_script(self, script_id: int):
+    def delete_script(self, script_id: int, content: str):
         """删除话术"""
-        data = self.data_adapter.get_script_data(script_id)
-        content = data.get("content")
-        script_id = data.get("id")
-
         reply = QMessageBox.question(
             self, "确认删除",
             f"确定要删除话术:\n{content[:100]}{'...' if len(content) > 100 else ''}",
@@ -1963,14 +1861,9 @@ class AssistantMainWindow(QMainWindow):
 
         if reply == QMessageBox.Yes:
             try:
-                if self.is_search:
-                    QMessageBox.warning(self, "警告", "搜索结果中暂不支持删除，请清空搜索后再操作。")
-                    return
                 success = self.data_adapter.delete_script(script_id)
                 if success:
-                    self.save_scripts()
-                    self.load_current_scripts_data()
-                    self.update_tree()
+                    self.update_ui('delete_script')
             except Exception as e:
                 print('ValueError', e)
                 QMessageBox.warning(self, "错误", "找不到要删除的话术！")

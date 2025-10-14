@@ -244,7 +244,7 @@ QCheckBox::indicator:checked {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                 stop:0 #7bb3e0, stop:1 #5b9bd5);
     border-color: #5b9bd5;
-    image: url(styles/icons/check.svg);
+    image: url(icons/check.svg);
 }
 
 /* 移除复选框hover效果 */
@@ -280,7 +280,7 @@ QComboBox QAbstractItemView {
 /* 树形控件 */
 QTreeWidget {
     border: 2px solid rgba(161, 196, 253, 0.4);
-    background-color: rgba(255, 255, 255, 0.9);
+    background: transparent;
     alternate-background-color: rgba(194, 233, 255, 0.1);
     color: #2d5aa0;
     font-size: 9pt;
@@ -292,6 +292,7 @@ QTreeWidget {
 QTreeWidget::viewport {
     margin: 0px;
     padding: 0px;
+    background: transparent;
 }
 
 QTreeWidget::item {
@@ -370,7 +371,6 @@ QTabWidget::pane {
 }
 
 QTabWidget::tab-bar {
-    alignment: left;
     border: none;
 }
 
@@ -484,18 +484,4 @@ QFrame#shadow_frame {
     border: 1px solid #e2e8f0;
 }
 
-/* 响应式设计 */
-@media (max-width: 400px) {
-    QPushButton {
-        padding: 8px 14px;
-        font-size: 8pt;
-    }
-    
-    QGroupBox {
-        font-size: 9pt;
-    }
-    
-    QLineEdit, QTextEdit {
-        padding: 8px 12px;
-    }
-}
+/* 响应式设计: Qt QSS 不支持 @media，已移除 */

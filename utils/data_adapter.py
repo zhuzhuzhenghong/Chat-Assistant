@@ -19,7 +19,7 @@ class DataAdapter:
         self.scripts_file = constants.real_scripts_rel_path
         self.config_file = constants.real_config_rel_path
         # 索引缓存文件（与树保持同步）
-        self.index_file = os.path.join(os.path.dirname(self.scripts_file), 'index.json')
+        self.index_file = constants.index_file
         # 用户ID：后端返回的整型ID；默认 0，避免 None 参与类型检查
         self.user_id: Optional[int] = 0
 
@@ -61,7 +61,6 @@ class DataAdapter:
         self.load_user_data()
         # 优先加载索引缓存，加速启动；失败则从树重建索引
         loaded = self.load_index_cache()
-        print('loaded',loaded)
         if not loaded:
             self.rebuild_indexes()
         else:
@@ -69,6 +68,11 @@ class DataAdapter:
             self.save_index_cache()
 
     # ==================== 核心数据本地操作 ====================
+
+    def get_local_data(self):
+        self.get_local_scripts_data()
+        self.get_local_config_data()
+
     def get_local_scripts_data(self):
         """读取本地话术数据（树形）"""
         if os.path.exists(self.scripts_file):
@@ -89,10 +93,6 @@ class DataAdapter:
             self.config_data = utils.init_config_data()
         return self.config_data
 
-    def get_local_data(self):
-        self.get_local_scripts_data()
-        self.get_local_config_data()
-
     def save_local_scripts_data(self) -> bool:
         """将话术保存到本地json文件"""
         try:
@@ -100,8 +100,7 @@ class DataAdapter:
             with json_file_lock:
                 with open(self.scripts_file, 'w', encoding='utf-8') as f:
                     json.dump(self.scripts_data, f, ensure_ascii=False, indent=2)
-            # 同步索引缓存，确保与树一致
-            self.save_index_cache()
+
             # 保存后可按需重建索引，确保与树一致
             self.rebuild_indexes()
             return True
@@ -122,54 +121,6 @@ class DataAdapter:
         except Exception as e:
             print(f"保存本地数据失败: {e}")
             return False
-
-    def set_data_structure(self, data: Any) -> List[Dict[str, Any]]:
-        script_data: List[Dict[str, Any]] = []
-        # 兼容 dict 或 list 的输入
-        normalized: List[Dict[str, Any]] = []
-        if isinstance(data, list):
-            normalized = data
-        elif isinstance(data, dict):
-            inner = data.get('data')
-            normalized = inner if isinstance(inner, list) else [data]
-        else:
-            normalized = []
-        for type in (normalized or []):
-            # print('type', type)
-            type_dict: Dict[str, Any] = {
-                "name": type.get('name', ''),
-                "script_type_id": type.get('id', 0),
-                "data": []
-            }
-            for category in type.get('data', []):
-                level_one_category_dict = {
-                    "name": category.get('name', ''),
-                    "script_type_id": type.get('id', 0),
-                    "level_one_category_id": category.get('id', 0),
-                    "data": []
-                }
-                for title in category.get('data', []):
-                    level_two_category_dict = {
-                        "name": title.get('name', ''),
-                        "script_type_id": type.get('id', 0),
-                        "level_one_category_id": category.get('id', 0),
-                        "level_two_category_id": title.get('id', 0),
-                        "data": []
-                    }
-                    for script in title.get('data', []):
-                        script_dict = {
-                            "content": script.get('content', ''),
-                            "title": script.get('title', ''),
-                            "script_type_id": type.get('id', 0),
-                            "level_one_category_id": category.get('id', 0),
-                            "level_two_category_id": title.get('id', 0),
-                            "script_id": script.get('id', 0)
-                        }
-                        level_two_category_dict["data"].append(script_dict)
-                    level_one_category_dict['data'].append(level_two_category_dict)
-                type_dict['data'].append(level_one_category_dict)
-            script_data.append(type_dict)
-        return script_data
 
     # ==================== 索引构建（四表 + 子集索引） ====================
     def rebuild_indexes(self):
@@ -204,7 +155,7 @@ class DataAdapter:
         if not isinstance(tree, list):
             return
         for type_index, type_data in enumerate(tree):
-            type_id = type_data.get('script_type_id')
+            type_id = type_data.get('id')
             if not isinstance(type_id, int):
                 continue
             name = type_data.get('name', '')
@@ -215,9 +166,8 @@ class DataAdapter:
             self.type_data_ById[type_id] = type_rec
             self.type_children_idList_byIds.setdefault(type_id, [])
             self.type_index_list_ById[type_id] = [type_index]
-
             for level_one_index, level_one_data in enumerate(type_data.get('data', [])):
-                level_one_id = level_one_data.get('level_one_category_id')
+                level_one_id = level_one_data.get('id')
                 if not isinstance(level_one_id, int):
                     continue
                 level_one_name = level_one_data.get('name', '')
@@ -233,7 +183,7 @@ class DataAdapter:
                 self.level_one_index_list_ById[level_one_id] = [type_index, level_one_index]
 
                 for level_two_index, level_two_data in enumerate(level_one_data.get('data', [])):
-                    level_two_id = level_two_data.get('level_two_category_id')
+                    level_two_id = level_two_data.get('id')
                     level_two_name = level_two_data.get('name', '')
                     level_two_rec = {'id': level_two_id, 'name': level_two_name, 'typeId': type_id,
                                      'levelOneId': level_one_id}
@@ -245,10 +195,10 @@ class DataAdapter:
                         self.level_one_children_idList_byIds[(type_id, level_one_id)] = children_level_two_ids
                     children_level_two_ids.append(level_two_id)
                     self.level_two_children_idList_byIds.setdefault((type_id, level_one_id, level_two_id), [])
-                    self.level_two_index_list_ById[level_two_index] = [type_index, level_one_index, level_two_index]
+                    self.level_two_index_list_ById[level_two_id] = [type_index, level_one_index, level_two_index]
 
                     for script_index, script in enumerate(level_two_data.get('data', [])):
-                        script_id = script.get('script_id')
+                        script_id = script.get('id')
                         script_title = script.get('title', '')
                         script_content = script.get('content', '')
                         script_rec = {
@@ -268,10 +218,21 @@ class DataAdapter:
                             self.level_two_children_idList_byIds[
                                 (type_id, level_one_id, level_two_id)] = children_script_ids
                         children_script_ids.append(script_id)
-                        self.script_index_list_ById[script_index] = [type_index, level_one_index, level_two_index,
-                                                                     script_index]
+                        self.script_index_list_ById[script_id] = [type_index, level_one_index, level_two_index,
+                                                                  script_index]
+        # 同步索引缓存，确保与树一致
+        self.save_index_cache()
 
-    # 便捷 getter（避免层层遍历）
+    # ==================== 便捷 getter（避免层层遍历） ====================
+
+    def get_scripts_data(self) -> List[Dict[str, Any]]:
+        """获取话术数据（树形）"""
+        return self.scripts_data
+
+    def get_config_data(self) -> Dict[str, Any]:
+        """获取配置数据"""
+        return self.config_data
+
     def get_type_data(self, type_id: int) -> Optional[Dict[str, Any]]:
         if type_id:
             return self.type_data_ById.get(type_id)
@@ -321,7 +282,7 @@ class DataAdapter:
 
     def get_script_index(self, script_id) -> List[int]:
         if script_id:
-            return self.script_index_list_ById.get(type_id)
+            return self.script_index_list_ById.get(script_id)
 
     def get_tree_scripts_data(self, type_id, level_one_id) -> list:
         """获取当前选中Tab的数据（通过索引构建 UI 所需的 title 列表）"""
@@ -349,52 +310,6 @@ class DataAdapter:
             titles.append(title_node)
         # 更新当前二级分类缓存与返回
         return titles
-
-    # 可选：将分表导出为树（若未来切换以分表为真源时使用）
-    def export_tree(self) -> List[Dict[str, Any]]:
-        """将当前分表按 children 索引合成为树形"""
-        tree: List[Dict[str, Any]] = []
-        for t in self.all_type_data_list:
-            type_id = t['id']
-            type_node = {'name': t['name'], 'script_type_id': type_id, 'data': []}
-            for level_one_id in self.type_children_idList_byIds.get(type_id, []):
-                l1 = self.level_one_data_ById.get(level_one_id)
-                if not l1:
-                    continue
-                level_one_node = {
-                    'name': l1['name'],
-                    'script_type_id': type_id,
-                    'level_one_category_id': l1['id'],
-                    'data': []
-                }
-                for level_two_id in self.level_one_children_idList_byIds.get((type_id, level_one_id), []):
-                    l2 = self.level_two_data_ById.get(level_two_id)
-                    if not l2:
-                        continue
-                    level_two_node = {
-                        'name': l2['name'],
-                        'script_type_id': type_id,
-                        'level_one_category_id': level_one_id,
-                        'level_two_category_id': l2['id'],
-                        'data': []
-                    }
-                    for sid in self.level_two_children_idList_byIds.get((type_id, level_one_id, level_two_id), []):
-                        sc = self.script_data_ById.get(sid)
-                        if not sc:
-                            continue
-                        sc_node = {
-                            'content': sc['content'],
-                            'title': sc.get('title', ''),
-                            'script_type_id': type_id,
-                            'level_one_category_id': level_one_id,
-                            'level_two_category_id': level_two_id,
-                            'script_id': sc['id']
-                        }
-                        level_two_node['data'].append(sc_node)
-                    level_one_node['data'].append(level_two_node)
-                type_node['data'].append(level_one_node)
-            tree.append(type_node)
-        return tree
 
     # ==================== 索引缓存（与树保持一致） ====================
     def save_index_cache(self) -> bool:
@@ -470,189 +385,133 @@ class DataAdapter:
             print(f"加载索引缓存失败: {e}")
             return False
 
-    # ==================== CRUD（四表分离 + 子集索引，自动合成树并保存） ====================
-
-    def _rebuild_and_persist(self, persist: bool = True) -> None:
-        """从分表导出树，写入 self.scripts_data，并可选择保存到文件"""
-        self.scripts_data = self.export_tree()
-        if persist:
-            self.save_local_scripts_data()
+    # ==================== CRUD（四表分离 + 子集索引） ====================
 
     # 新增
-    def add_type(self, name: str, type_id: int, persist: bool = True) -> Optional[int]:
-        if not isinstance(type_id, int):
-            return None
-        if type_id in self.type_data_ById:
-            return None
-        rec = {'id': type_id, 'name': name}
-        self.all_type_data_list.append(rec)
-        self.type_data_ById[type_id] = rec
-        self.type_children_idList_byIds.setdefault(type_id, [])
-        self._rebuild_and_persist(persist)
-        return type_id
+    def add_type(self, name: str, type_id: int) -> Optional[int]:
+        pass
 
-    def add_level_one(self, type_id: int, name: str, level_one_id: int, persist: bool = True) -> Optional[int]:
-        if type_id not in self.type_data_ById:
-            return None
-        if not isinstance(level_one_id, int):
-            return None
-        if level_one_id in self.level_one_data_ById:
-            return None
-        rec = {'id': level_one_id, 'name': name, 'typeId': type_id}
-        self.all_level_one_data_list.append(rec)
-        self.level_one_data_ById[level_one_id] = rec
-        children_level_one_ids = self.type_children_idList_byIds.get(type_id)
-        if not isinstance(children_level_one_ids, list):
-            children_level_one_ids = []
-            self.type_children_idList_byIds[type_id] = children_level_one_ids
-        children_level_one_ids.append(level_one_id)
-        self.level_one_children_idList_byIds.setdefault((type_id, level_one_id), [])
-        self._rebuild_and_persist(persist)
-        return level_one_id
+    def add_level_one(self, type_id: int, name: str) -> bool:
+        index_list = self.get_type_index(type_id)
+        if len(index_list):
+            type_index = index_list[0]
+            new_level_one = {
+                "id": utils.generate_id(),
+                "name": name,
+                "data": []
+            }
+            self.scripts_data[type_index]['data'].append(new_level_one)
+            self.save_local_scripts_data()
+            return True
+        return False
 
-    def add_level_two(self, type_id: int, level_one_id: int, name: str, level_two_id: int, persist: bool = True) -> \
-            Optional[int]:
-        if level_one_id not in self.level_one_data_ById:
-            return None
-        if not isinstance(level_two_id, int):
-            return None
-        if level_two_id in self.level_two_data_ById:
-            return None
-        rec = {'id': level_two_id, 'name': name, 'typeId': type_id, 'levelOneId': level_one_id}
-        self.all_level_two_data_list.append(rec)
-        self.level_two_data_ById[level_two_id] = rec
-        children_level_two_ids = self.level_one_children_idList_byIds.get((type_id, level_one_id))
-        if not isinstance(children_level_two_ids, list):
-            children_level_two_ids = []
-            self.level_one_children_idList_byIds[(type_id, level_one_id)] = children_level_two_ids
-        children_level_two_ids.append(level_two_id)
-        self.level_two_children_idList_byIds.setdefault((type_id, level_one_id, level_two_id), [])
-        self._rebuild_and_persist(persist)
-        return level_two_id
+    def add_level_two(self, level_one_id: int, name: str) -> bool:
+        index_list = self.get_level_one_index(level_one_id)
+        if len(index_list):
+            type_index = index_list[0]
+            level_one_index = index_list[1]
+            new_level_two = {
+                "id": utils.generate_id(),
+                "name": name,
+                "data": []
+            }
+            self.scripts_data[type_index]['data'][level_one_index]['data'].append(new_level_two)
+            self.save_local_scripts_data()
+            return True
+        return False
 
-    def add_script(self, type_id: int, level_one_id: int, level_two_id: int, title: str, content: str, script_id: int,
-                   persist: bool = True) -> Optional[int]:
-        if level_two_id not in self.level_two_data_ById:
-            return None
-        if not isinstance(script_id, int):
-            return None
-        if script_id in self.script_data_ById:
-            return None
-        rec = {'id': script_id, 'title': title, 'content': content, 'typeId': type_id, 'levelOneId': level_one_id,
-               'levelTwoId': level_two_id}
-        self.all_script_data_list.append(rec)
-        self.script_data_ById[script_id] = rec
-        children_script_ids = self.level_two_children_idList_byIds.get((type_id, level_one_id, level_two_id))
-        if not isinstance(children_script_ids, list):
-            children_script_ids = []
-            self.level_two_children_idList_byIds[(type_id, level_one_id, level_two_id)] = children_script_ids
-        children_script_ids.append(script_id)
-        self._rebuild_and_persist(persist)
-        return script_id
+    def add_script(self, level_two_id: int, title: str, content: str, ) -> bool:
+        index_list = self.get_level_two_index(level_two_id)
+        if len(index_list):
+            type_index = index_list[0]
+            level_one_index = index_list[1]
+            level_two_index = index_list[2]
+            new_script = {
+                "id": utils.generate_id(),
+                "content": content,
+                "title": title
+            }
+            self.scripts_data[type_index]['data'][level_one_index]['data'][level_two_index]['data'].append(new_script)
+            self.save_local_scripts_data()
+            return True
+        return False
 
     # 编辑
-    def edit_type_name(self, type_id: int, name: str, persist: bool = True) -> bool:
-        rec = self.type_data_ById.get(type_id)
-        if not rec:
-            return False
-        rec['name'] = name
-        self._rebuild_and_persist(persist)
-        return True
+    def edit_type_name(self, type_id: int, name: str) -> bool:
+        pass
 
-    def edit_level_one_name(self, level_one_id: int, name: str, persist: bool = True) -> bool:
-        rec = self.level_one_data_ById.get(level_one_id)
-        if not rec:
-            return False
-        rec['name'] = name
-        self._rebuild_and_persist(persist)
-        return True
+    def edit_level_one_name(self, level_one_id: int, name: str) -> bool:
+        index_list = self.get_level_one_index(level_one_id)
+        if len(index_list) > 0:
+            type_index = index_list[0]
+            level_one_index = index_list[1]
+            self.scripts_data[type_index]['data'][level_one_index]['name'] = name
+            self.save_local_scripts_data()
+            return True
+        return False
 
-    def edit_level_two_name(self, level_two_id: int, name: str, persist: bool = True) -> bool:
-        rec = self.level_two_data_ById.get(level_two_id)
-        if not rec:
-            return False
-        rec['name'] = name
-        self._rebuild_and_persist(persist)
-        return True
+    def edit_level_two_name(self, level_two_id: int, name: str) -> bool:
+        index_list = self.get_level_two_index(level_two_id)
+        if len(index_list) > 0:
+            type_index = index_list[0]
+            level_one_index = index_list[1]
+            level_two_index = index_list[2]
+            self.scripts_data[type_index]['data'][level_one_index]['data'][level_two_index]['name'] = name
+            self.save_local_scripts_data()
+            return True
+        return False
 
-    def edit_script(self, script_id: int, title: Optional[str] = None, content: Optional[str] = None,
-                    persist: bool = True) -> bool:
-        rec = self.script_data_ById.get(script_id)
-        if not rec:
-            return False
-        if title is not None:
-            rec['title'] = title
-        if content is not None:
-            rec['content'] = content
-        self._rebuild_and_persist(persist)
-        return True
+    def edit_script(self, script_id: int, title: Optional[str] = None, content: Optional[str] = None) -> bool:
+        index_list = self.get_script_index(script_id)
+        if len(index_list) > 0:
+            type_index = index_list[0]
+            level_one_index = index_list[1]
+            level_two_index = index_list[2]
+            script_index = index_list[3]
+            self.scripts_data[type_index]['data'][level_one_index]['data'][level_two_index]['data'][script_index][
+                'content'] = content
+            self.scripts_data[type_index]['data'][level_one_index]['data'][level_two_index]['data'][script_index][
+                'title'] = title
+            self.save_local_scripts_data()
+            return True
+        return False
 
     # 删除
-    def delete_type(self, type_id: int, persist: bool = True) -> bool:
-        t = self.type_data_ById.pop(type_id, None)
-        if not t:
-            return False
-        # 删除其一级分类
-        for level_one_id in list(self.type_children_idList_byIds.get(type_id, [])):
-            self.delete_level_one(level_one_id, persist=False)
-        self.type_children_idList_byIds.pop(type_id, None)
-        # 从列表移除
-        self.all_type_data_list = [x for x in self.all_type_data_list if x['id'] != type_id]
-        self._rebuild_and_persist(persist)
-        return True
+    def delete_type(self, type_id: int) -> bool:
+        pass
 
-    def delete_level_one(self, level_one_id: int, persist: bool = True) -> bool:
-        index_list = self.level_one_index_list_ById(level_one_id)
+    def delete_level_one(self, level_one_id: int) -> bool:
+        index_list = self.get_level_one_index(level_one_id)
         if len(index_list) > 0:
             type_index = index_list[0]
             level_one_index = index_list[1]
             del self.scripts_data[type_index]['data'][level_one_index]
-        # lo = self.level_one_data_ById.pop(level_one_id, None)
-        # if not lo:
-        #     return False
-        # # 删除其二级分类
-        # k1 = (lo['typeId'], level_one_id)
-        # for level_two_id in list(self.level_one_children_idList_byIds.get(k1, [])):
-        #     self.delete_level_two(level_two_id, persist=False)
-        # self.level_one_children_idList_byIds.pop(k1, None)
-        # # 从列表与父索引移除
-        # self.all_level_one_data_list = [x for x in self.all_level_one_data_list if x['id'] != level_one_id]
-        # if lo['typeId'] in self.type_children_idList_byIds:
-        #     self.type_children_idList_byIds[lo['typeId']] = [i for i in self.type_children_idList_byIds[lo['typeId']] if
-        #                                                      i != level_one_id]
-        # self._rebuild_and_persist(persist)
-        return True
+            self.save_local_scripts_data()
+            return True
+        return False
 
-    def delete_level_two(self, level_two_id: int, persist: bool = True) -> bool:
-        lt = self.level_two_data_ById.pop(level_two_id, None)
-        if not lt:
-            return False
-        # 删除其脚本
-        key = (lt['typeId'], lt['levelOneId'], level_two_id)
-        for sid in list(self.level_two_children_idList_byIds.get(key, [])):
-            self.delete_script(sid, persist=False)
-        self.level_two_children_idList_byIds.pop(key, None)
-        # 从列表与父索引移除
-        self.all_level_two_data_list = [x for x in self.all_level_two_data_list if x['id'] != level_two_id]
-        k1 = (lt['typeId'], lt['levelOneId'])
-        if k1 in self.level_one_children_idList_byIds:
-            self.level_one_children_idList_byIds[k1] = [i for i in self.level_one_children_idList_byIds[k1] if
-                                                        i != level_two_id]
-        self._rebuild_and_persist(persist)
-        return True
+    def delete_level_two(self, level_two_id: int) -> bool:
+        index_list = self.get_level_two_index(level_two_id)
+        if len(index_list) > 0:
+            type_index = index_list[0]
+            level_one_index = index_list[1]
+            level_two_index = index_list[2]
+            del self.scripts_data[type_index]['data'][level_one_index]['data'][level_two_index]
+            self.save_local_scripts_data()
+            return True
+        return False
 
-    def delete_script(self, script_id: int, persist: bool = True) -> bool:
-        sc = self.script_data_ById.pop(script_id, None)
-        if not sc:
-            return False
-        # 从列表移除
-        self.all_script_data_list = [x for x in self.all_script_data_list if x['id'] != script_id]
-        key = (sc['typeId'], sc['levelOneId'], sc['levelTwoId'])
-        if key in self.level_two_children_idList_byIds:
-            self.level_two_children_idList_byIds[key] = [i for i in self.level_two_children_idList_byIds[key] if
-                                                         i != script_id]
-        self._rebuild_and_persist(persist)
-        return True
+    def delete_script(self, script_id: int) -> bool:
+        index_list = self.get_script_index(script_id)
+        if len(index_list) > 0:
+            type_index = index_list[0]
+            level_one_index = index_list[1]
+            level_two_index = index_list[2]
+            script_index = index_list[3]
+            del self.scripts_data[type_index]['data'][level_one_index]['data'][level_two_index]['data'][script_index]
+            self.save_local_scripts_data()
+            return True
+        return False
 
     # ==================== 核心数据云端操作操作 ====================
     def load_user_data(self):
@@ -666,7 +525,7 @@ class DataAdapter:
                     if isinstance(scripts_data, list):
                         self.scripts_data = scripts_data
                     else:
-                        self.scripts_data = self.set_data_structure(scripts_data)
+                        self.scripts_data = scripts_data
 
                     # self.config_data = response.get('config_data', {})
 
@@ -732,39 +591,4 @@ class DataAdapter:
                 return False
         else:
             print("未配置API管理器，无法保存到云端")
-            return False
-
-    # ==================== 获取核心数据操作 ====================
-
-    def get_scripts_data(self) -> List[Dict[str, Any]]:
-        """获取话术数据（树形）"""
-        return self.scripts_data
-
-    def get_config_data(self) -> Dict[str, Any]:
-        """获取配置数据"""
-        return self.get_local_config_data()
-
-    def refresh_from_cloud(self) -> bool:
-        """刷新云端数据"""
-        if not self.api_manager:
-            print("未配置API管理器，无法刷新云端数据")
-            return False
-
-        try:
-            cloud_data = self.api_manager.get_user_data(self.user_id or 0)
-            if cloud_data and "scripts_data" in cloud_data:
-                scripts_tree = cloud_data["scripts_data"]
-                if isinstance(scripts_tree, list):
-                    self.scripts_data = scripts_tree
-                    self.rebuild_indexes()
-                    print(f"已加载用户 {self.user_id} 的云端数据")
-                    return True
-                else:
-                    print("云端 scripts_data 结构非法")
-                    return False
-            else:
-                print(f"云端无用户 {self.user_id} 的数据")
-                return False
-        except Exception as e:
-            print(f"刷新云端数据失败: {e}")
             return False

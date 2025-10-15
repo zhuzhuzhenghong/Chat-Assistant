@@ -955,7 +955,7 @@ class AssistantMainWindow(QMainWindow):
 
         if checked:
             if not self.target_window:
-                self.dock_checkbox.setChecked(False)
+                self.title_bar.set_dock_state(False)
                 self.dock_enabled = False
                 QMessageBox.warning(self, "警告", "没有检测到目标窗口！请先选择一个窗口。")
                 return
@@ -990,14 +990,27 @@ class AssistantMainWindow(QMainWindow):
         """置顶状态改变"""
         self.always_on_top = checked
 
-        # 更新窗口标志
-        if checked:
-            self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
-        else:
-            self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowStaysOnTopHint)
+        # 使用 Windows API 切换置顶，避免窗口重建导致闪烁
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            HWND_TOPMOST = -1
+            HWND_NOTOPMOST = -2
+            SWP_NOMOVE = 0x0002
+            SWP_NOSIZE = 0x0001
+            SWP_NOACTIVATE = 0x0010
+            flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
+            hwnd = int(self.winId())
+            user32.SetWindowPos(hwnd, HWND_TOPMOST if checked else HWND_NOTOPMOST,
+                                0, 0, 0, 0, flags)
+        except Exception:
+            # 回退到 Qt 方式（可能会有轻微闪烁）
+            if checked:
+                self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+            else:
+                self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowStaysOnTopHint)
+            self.show()
 
-        # 重新显示窗口以应用新的标志
-        self.show()
         self.save_config()
 
         if checked:

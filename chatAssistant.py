@@ -524,7 +524,7 @@ class AssistantMainWindow(QMainWindow):
 
             # 设置当前选中一级分类id
             level_one_list = self.data_adapter.get_level_one_list(self.current_type_id)
-            if self.current_level_one_id not in level_one_list:
+            if self.current_level_one_id not in level_one_list and len(level_one_list) > 0:
                 self.current_level_one_id = level_one_list[0]['id']
 
     def sync_cloud_data(self):
@@ -624,7 +624,7 @@ class AssistantMainWindow(QMainWindow):
         main_layout.addWidget(self.title_bar)
 
         # 连接标题栏信号
-        self.title_bar.close_clicked.connect(self.close)
+        # self.title_bar.close_clicked.connect(self.close)
         self.title_bar.minimize_clicked.connect(self.showMinimized)
         self.title_bar.dock_toggled.connect(self.on_dock_changed)
         self.title_bar.lock_toggled.connect(self.on_lock_changed)
@@ -828,7 +828,6 @@ class AssistantMainWindow(QMainWindow):
             y = margin
 
             level_one_List = self.data_adapter.get_level_one_list(self.current_type_id)
-
             for level_one_attr in level_one_List:
                 level_one_id = level_one_attr.get('id')
                 level_one_name = level_one_attr.get('name')
@@ -1018,8 +1017,10 @@ class AssistantMainWindow(QMainWindow):
                 self.current_type_id = type_id
 
                 level_one_list = self.data_adapter.get_level_one_list(self.current_type_id)
-                self.current_level_one_id = level_one_list[0]['id']
-
+                if len(level_one_list) > 0:
+                    self.current_level_one_id = level_one_list[0]['id']
+                else:
+                    self.current_level_one_id = 0
                 # 刷新
                 self.update_ui('switch_type')
 
@@ -1105,17 +1106,21 @@ class AssistantMainWindow(QMainWindow):
 
         if not item:
             # 点击空白区域的菜单
+            if not self.current_level_one_id:
+                return
+
             add_title_action = QAction("添加话术标题", self)
             add_title_action.triggered.connect(
                 lambda checked: self.show_add_dialog('level_two', self.current_level_one_id))
             menu.addAction(add_title_action)
 
-            add_script_action = QAction("添加话术", self)
             id_list = self.data_adapter.level_one_children_idList_byIds.get(
-                (self.current_type_id, self.current_level_one_id), 0)
-            add_script_action.triggered.connect(
-                lambda checked: self.show_add_dialog('script', id_list[0]))
-            menu.addAction(add_script_action)
+                (self.current_type_id, self.current_level_one_id), [])
+            if len(id_list) > 0:
+                add_script_action = QAction("添加话术", self)
+                add_script_action.triggered.connect(
+                    lambda checked: self.show_add_dialog('script', id_list[0]))
+                menu.addAction(add_script_action)
 
             menu.exec(self.tree_widget.mapToGlobal(position))
             return
@@ -1706,6 +1711,10 @@ class AssistantMainWindow(QMainWindow):
             if self.data_adapter:
                 success = self.data_adapter.add_level_one(type_id, value)
                 if success:
+                    id_list = self.data_adapter.type_children_idList_byIds.get(type_id, [])
+                    if not self.current_level_one_id and len(id_list) > 0:
+                        self.current_level_one_id = id_list[0]
+
                     self.update_ui('add_level_one')
                 else:
                     QMessageBox.warning(self, "警告", "添加失败")
@@ -1809,10 +1818,10 @@ class AssistantMainWindow(QMainWindow):
     def delete_level_one(self, level_one_id: int, level_one_name: str):
         """删除话术分类（使用 DataAdapter）"""
         # 使用数据适配器的索引获取真实的一级分类数量进行校验
-        level_one_list = self.data_adapter.get_level_one_list(self.current_type_id) or []
-        if len(level_one_list) <= 1:
-            QMessageBox.warning(self, "警告", "至少需要保留一个一级分类！")
-            return
+        # level_one_list = self.data_adapter.get_level_one_list(self.current_type_id) or []
+        # if len(level_one_list) <= 1:
+        #     QMessageBox.warning(self, "警告", "至少需要保留一个一级分类！")
+        #     return
 
         reply = QMessageBox.question(
             self, "确认删除",
@@ -1825,9 +1834,12 @@ class AssistantMainWindow(QMainWindow):
             try:
                 success = self.data_adapter.delete_level_one(level_one_id)
                 if success:
-                    if self.current_level_one_id == level_one_id:
-                        id_list = self.data_adapter.type_children_idList_byIds.get(self.current_type_id)
+                    id_list = self.data_adapter.type_children_idList_byIds.get(self.current_type_id)
+                    if self.current_level_one_id == level_one_id and len(id_list) > 0:
                         self.current_level_one_id = id_list[0]
+                    else:
+                        self.current_level_one_id = 0
+
                     self.update_ui('delete_level_one')
                 else:
                     QMessageBox.warning(self, "错误", "删除失败：未找到该分类或ID无效")

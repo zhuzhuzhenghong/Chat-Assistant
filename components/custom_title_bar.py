@@ -160,7 +160,7 @@ class CustomTitleBar(QWidget):
         layout.addWidget(self.lock_btn)
         layout.addWidget(self.topmost_btn)
         layout.addWidget(self.minimize_btn)
-        layout.addWidget(self.close_btn)
+        # layout.addWidget(self.close_btn)
         
         # 连接信号
         self.close_btn.clicked.connect(self.close_clicked.emit)

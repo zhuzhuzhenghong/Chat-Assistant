@@ -129,26 +129,15 @@ class DataAdapter:
         self._build_from_tree(self.scripts_data)
 
     def _clear_indexes(self):
-        self.all_type_id_list.clear()
-
-        self.all_type_data_list.clear()
-        self.all_level_one_data_list.clear()
-        self.all_level_two_data_list.clear()
-        self.all_script_data_list.clear()
-
-        self.type_data_ById.clear()
-        self.level_one_data_ById.clear()
-        self.level_two_data_ById.clear()
-        self.script_data_ById.clear()
-
-        self.type_children_idList_byIds.clear()
-        self.level_one_children_idList_byIds.clear()
-        self.level_two_children_idList_byIds.clear()
-
-        self.type_index_list_ById.clear()
-        self.level_one_index_list_ById.clear()
-        self.level_two_index_list_ById.clear()
-        self.script_index_list_ById.clear()
+        list = [
+            'all_type_id_list', 'all_type_data_list', 'all_level_one_data_list',
+            'all_level_two_data_list', 'all_script_data_list', 'type_data_ById',
+            'level_one_data_ById', 'level_two_data_ById', 'script_data_ById',
+            'type_children_idList_byIds', 'level_one_children_idList_byIds', 'level_two_children_idList_byIds',
+            'type_index_list_ById', 'level_one_index_list_ById', 'level_two_index_list_ById', 'script_index_list_ById'
+        ]
+        for attr in list:
+            getattr(self, attr).clear()
 
     def _build_from_tree(self, tree: List[Dict[str, Any]]):
         """将树形数据打平成四表，并构建 ById 与 children 索引"""

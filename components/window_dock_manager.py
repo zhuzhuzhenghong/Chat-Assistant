@@ -22,7 +22,7 @@ class WindowDockManager(QObject):
         self.dock_gap = 1  # 吸附间隔，默认1px
         self.dock_timer = QTimer()
         self.dock_timer.timeout.connect(self.update_dock_position)
-        self.dock_timer.setInterval(20)  # 20ms更新一次
+        self.dock_timer.setInterval(10)  # 20ms更新一次
         
         # 窗口位置缓存
         self.last_target_rect = None

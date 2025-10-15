@@ -353,11 +353,6 @@ class AssistantMainWindow(QMainWindow):
         self.current_scripts_data = []
         self.filtered_scripts = []
 
-        # 数据存储
-        self.level_one_category_dict = {}
-        self.level_two_category_dict = {}
-        self.right_click_data = {}
-
         # 窗口跟踪
         self.target_window = None
         self.target_title = "无"
@@ -368,17 +363,13 @@ class AssistantMainWindow(QMainWindow):
         self.always_on_top = True
         self.position_locked = False
 
-        # 发送设置（弹窗）
-        self.send_hotkey = "Enter"
-        self.send_delay_ms = 0
-        self.enter_to_send = True
-
         # 吸附功能
         self.dock_enabled = False
         self.dock_gap = 1
+
         # 新增：吸附位置与可吸附软件初始化
         self.dock_position = "right"
-        self.dock_apps = ["微信", "QQ", "抖音"]
+        self.dock_apps = []
 
         # 用户登录状态
         self.current_user_id = None
@@ -395,10 +386,6 @@ class AssistantMainWindow(QMainWindow):
         self.level_one_tab_buttons = {}
         self.level_one_buttons_widget = None
         self.secondary_buttons_layout = None
-
-        # 吸附功能配置
-        self.dock_enabled = False
-        self.dock_gap = 1
 
         # 搜索状态
         self.is_search = False
@@ -451,8 +438,8 @@ class AssistantMainWindow(QMainWindow):
         if not self.is_locked:
             self.target_window = window_handle
             self.target_title = window_title
-            self.update_target_display()
-
+            print('window_handle', self.target_window)
+            print('target_title', self.target_title)
             # 若启用吸附，仅对被允许的软件进行吸附
             if self.dock_manager:
                 try:
@@ -470,18 +457,6 @@ class AssistantMainWindow(QMainWindow):
                         self.dock_manager.disable_docking()
                 except Exception as e:
                     print(f"更新吸附目标失败: {e}")
-
-    def update_target_display(self):
-        """更新目标显示"""
-        display_title = self.target_title
-        if len(display_title) > 15:
-            display_title = display_title[:15] + "..."
-
-        lock_status = "🔒" if self.is_locked else ""
-        dock_status = "📎" if self.dock_enabled else ""
-        # self.target_label.setText(f"{lock_status}{dock_status}目标: {display_title}")
-        # 目标标签已被移除，改为在状态栏显示
-        self.status_label.setText(f"{lock_status}{dock_status}目标: {display_title}")
 
     def start_monitoring(self):
         """启动窗口监控"""
@@ -506,12 +481,6 @@ class AssistantMainWindow(QMainWindow):
     def init_dock_manager(self):
         """初始化吸附管理器"""
         self.dock_manager = WindowDockManager(self)
-        self.dock_manager.dock_position_changed.connect(self.on_dock_position_changed)
-        # 初始化吸附间隔
-        try:
-            self.dock_manager.set_dock_gap(getattr(self, 'dock_gap', 1))
-        except Exception as e:
-            print(f"设置初始吸附间隔失败: {e}")
 
     # <============================获取数据方法==============================>
 
@@ -609,15 +578,6 @@ class AssistantMainWindow(QMainWindow):
         if isClear:
             self.search_edit.clear()
 
-    def save_scripts(self):
-        """保存话术数据"""
-        try:
-            if hasattr(self, 'scripts_data') and self.data_adapter:
-                self.data_adapter.scripts_data = self.scripts_data
-                self.data_adapter.save_local_scripts_data()
-        except Exception as e:
-            print(f"保存数据失败: {e}")
-
     def save_config(self):
         """保存配置数据"""
         try:
@@ -627,30 +587,13 @@ class AssistantMainWindow(QMainWindow):
                 'current_user_id': self.current_user_id,
                 'is_logged_in': self.is_logged_in,
                 'dock_enabled': getattr(self, 'dock_enabled', False),
-                'dock_gap': getattr(self, 'dock_gap', 1),
                 'dock_position': getattr(self, 'dock_position', "right"),
                 'dock_apps': getattr(self, 'dock_apps', []),
-                'send_hotkey': getattr(self, 'send_hotkey', "Enter"),
-                'send_delay_ms': getattr(self, 'send_delay_ms', 0),
-                'enter_to_send': getattr(self, 'enter_to_send', True),
             }
             if self.data_adapter:
                 self.data_adapter.save_local_config_data(config)
         except Exception as e:
             print(f'保存配置失败: {e}')
-
-    # <============================处理基础数据方法==============================>
-
-    def update_current_level_one_category_dict(self, data):
-        '''更新一级分类dict数据'''
-        self.level_one_category_dict = {}
-        for level_one_category_data in data:
-            dict = {
-                'name': level_one_category_data['name'],
-                'script_type_id': level_one_category_data['script_type_id'],
-                'level_one_category_id': level_one_category_data['level_one_category_id']
-            }
-            self.level_one_category_dict[level_one_category_data['level_one_category_id']] = dict
 
     # <============================创建界面元素方法==============================>
 
@@ -1001,44 +944,33 @@ class AssistantMainWindow(QMainWindow):
         self.dock_enabled = checked
 
         if checked:
-            if not self.target_window:
-                self.title_bar.set_dock_state(False)
-                self.dock_enabled = False
-                QMessageBox.warning(self, "警告", "没有检测到目标窗口！请先选择一个窗口。")
-                return
-
-            # 检查是否允许当前软件吸附
-            if not self.is_window_allowed_for_dock(self.target_title or ""):
-                self.title_bar.set_dock_state(False)
-                self.dock_enabled = False
-                QMessageBox.information(self, "提示", "当前窗口未在允许吸附的软件列表中。请在设置中勾选对应软件后再试。")
-                return
+            # if not self.target_window:
+            #     self.title_bar.set_dock_state(False)
+            #     self.dock_enabled = False
+            #     QMessageBox.warning(self, "警告", "没有检测到目标窗口！请先选择一个窗口。")
+            #     return
+            #
+            # # 检查是否允许当前软件吸附
+            # if not self.is_window_allowed_for_dock(self.target_title or ""):
+            #     self.title_bar.set_dock_state(False)
+            #     self.dock_enabled = False
+            #     QMessageBox.information(self, "提示", "当前窗口未在允许吸附的软件列表中。请在设置中勾选对应软件后再试。")
+            #     return
 
             # 启用吸附
             if self.dock_manager:
                 self.dock_manager.enable_docking(self.target_window)
-                self.status_label.setText("✅ 窗口吸附已启用")
         else:
             # 禁用吸附
             if self.dock_manager:
                 self.dock_manager.disable_docking()
-                self.status_label.setText("❌ 窗口吸附已禁用")
 
         self.save_config()
-
-    def on_dock_position_changed(self, x: int, y: int, width: int, height: int):
-        """吸附位置变化事件"""
-        # 这里可以添加位置变化的处理逻辑
-        pass
 
     def on_lock_changed(self, checked: bool):
         """锁定状态改变"""
         self.position_locked = checked
         self.save_config()
-        if checked:
-            self.status_label.setText("🔒 位置已锁定")
-        else:
-            self.status_label.setText("🔓 位置已解锁")
 
     def on_topmost_changed(self, checked: bool):
         """置顶状态改变"""
@@ -1066,11 +998,6 @@ class AssistantMainWindow(QMainWindow):
             self.show()
 
         self.save_config()
-
-        if checked:
-            self.status_label.setText("⬆ 窗口置顶已启用")
-        else:
-            self.status_label.setText("⬇ 窗口置顶已禁用")
 
     # <============================话术类型点击事件相关方法==============================>
 
@@ -1226,7 +1153,6 @@ class AssistantMainWindow(QMainWindow):
             edit_action = QAction("编辑话术", self)
             script_id = data['id']
             content = data['content']
-            self.right_click_data = data
 
             edit_action.triggered.connect(
                 lambda checked=False: self.show_edit_dialog('script', script_id))
@@ -1448,36 +1374,6 @@ class AssistantMainWindow(QMainWindow):
             if not hasattr(self, 'settings_dialog') or self.settings_dialog is None:
                 self.settings_dialog = SettingsDialog(self)
 
-                # 连接吸附设置
-                self.settings_dialog.dock_enabled_changed.connect(self.on_dock_changed)
-                def _on_gap_changed(gap: int):
-                    self.dock_gap = gap
-                    if hasattr(self, 'dock_manager') and self.dock_manager:
-                        try:
-                            self.dock_manager.set_dock_gap(gap)
-                        except Exception as e:
-                            print(f"更新吸附间隔失败: {e}")
-                    self.save_config()
-                    self.status_label.setText(f"📎 吸附间隔: {gap}px")
-                self.settings_dialog.dock_gap_changed.connect(_on_gap_changed)
-
-                # 连接发送设置
-                def _on_hotkey_changed(hk: str):
-                    self.send_hotkey = hk
-                    self.save_config()
-                    self.status_label.setText(f"⌨ 发送快捷键: {hk}")
-                def _on_delay_changed(ms: int):
-                    self.send_delay_ms = ms
-                    self.save_config()
-                    self.status_label.setText(f"⏱ 发送延迟: {ms}ms")
-                def _on_enter_changed(enabled: bool):
-                    self.enter_to_send = enabled
-                    self.save_config()
-                    self.status_label.setText("↩ 回车发送已启用" if enabled else "↩ 回车发送已关闭")
-
-                self.settings_dialog.send_hotkey_changed.connect(_on_hotkey_changed)
-                self.settings_dialog.send_delay_changed.connect(_on_delay_changed)
-                self.settings_dialog.enter_to_send_changed.connect(_on_enter_changed)
                 # 同步发送模式：弹窗改动 -> 主窗口
                 self.settings_dialog.send_mode_changed.connect(self.set_send_mode)
 
@@ -1563,7 +1459,7 @@ class AssistantMainWindow(QMainWindow):
             return
         self.dock_position = pos
         self.save_config()
-        self.status_label.setText(f"📎 吸附位置: {'左侧' if pos=='left' else '右侧'}")
+        self.status_label.setText(f"📎 吸附位置: {'左侧' if pos == 'left' else '右侧'}")
         # 若已启用吸附且存在目标窗口，可根据需要刷新吸附
         try:
             # 先设置吸附侧边
@@ -1572,9 +1468,12 @@ class AssistantMainWindow(QMainWindow):
                     self.dock_manager.set_side('left' if pos == 'left' else 'right')
                 except Exception as e:
                     print(f"设置吸附侧边失败: {e}")
-            if getattr(self, 'dock_enabled', False) and getattr(self, 'dock_manager', None) and getattr(self, 'target_window', None):
+            if getattr(self, 'dock_enabled', False) and getattr(self, 'dock_manager', None) and getattr(self,
+                                                                                                        'target_window',
+                                                                                                        None):
                 # 仅当当前窗口允许吸附且不是本程序窗口时才刷新
-                if self.is_window_allowed_for_dock(self.target_title or "") and not self.is_our_window(self.target_window):
+                if self.is_window_allowed_for_dock(self.target_title or "") and not self.is_our_window(
+                        self.target_window):
                     self.dock_manager.disable_docking()
                     self.dock_manager.enable_docking(self.target_window)
                 else:
@@ -1596,6 +1495,39 @@ class AssistantMainWindow(QMainWindow):
                     self.dock_manager.disable_docking()
         except Exception as e:
             print(f"更新允许软件列表后处理失败: {e}")
+
+    def is_window_allowed_for_dock(self, title: str) -> bool:
+        """判断当前窗口标题是否在允许吸附的软件列表中（基于统一 APPS 配置）"""
+        try:
+            t = (title or "").lower()
+            selected = set(getattr(self, 'dock_apps', []) or [])
+            if not selected:
+                return False
+            # 汇总选中项的关键词
+            keywords = []
+            found = False
+            for app in APPS:
+                name = app.get("name")
+                arr = list(filter(lambda item: item == name, selected))
+                if len(arr):
+                    kws = app.get("keywords", [])
+                    keywords.extend(kws)
+            for kw in keywords:
+                if kw:  # 确保kw不是空值
+                    if kw.lower() == t:
+                        found = True
+            return found
+        except Exception:
+            return False
+
+    def is_our_window(self, hwnd: int) -> bool:
+        """判断句柄是否属于本程序进程"""
+        try:
+            import win32process
+            _, pid = win32process.GetWindowThreadProcessId(hwnd)
+            return pid == os.getpid()
+        except Exception:
+            return False
 
     def upload_data_to_cloud(self):
         """上传数据到云端"""
@@ -1626,7 +1558,6 @@ class AssistantMainWindow(QMainWindow):
                 self.data_adapter.user_id = uid
 
                 # 统一通过保存与索引刷新后再上传，避免直接赋值
-                self.save_scripts()
                 if self.data_adapter:
                     self.data_adapter.init_data()
                     self.load_data_from_adapter()
@@ -1986,12 +1917,6 @@ class AssistantMainWindow(QMainWindow):
 
     def delete_level_one(self, level_one_id: int, level_one_name: str):
         """删除话术分类（使用 DataAdapter）"""
-        # 使用数据适配器的索引获取真实的一级分类数量进行校验
-        # level_one_list = self.data_adapter.get_level_one_list(self.current_type_id) or []
-        # if len(level_one_list) <= 1:
-        #     QMessageBox.warning(self, "警告", "至少需要保留一个一级分类！")
-        #     return
-
         reply = QMessageBox.question(
             self, "确认删除",
             f"确定要删除一级分类 '{level_one_name}' 及其所有话术吗？",
@@ -2052,33 +1977,6 @@ class AssistantMainWindow(QMainWindow):
                 print('ValueError', e)
                 QMessageBox.warning(self, "错误", "找不到要删除的话术！")
 
-    def is_window_allowed_for_dock(self, title: str) -> bool:
-        """判断当前窗口标题是否在允许吸附的软件列表中（基于统一 APPS 配置）"""
-        try:
-            t = (title or "").lower()
-            selected = set(getattr(self, 'dock_apps', []) or [])
-            if not selected:
-                return False
-            # 汇总选中项的关键词
-            keywords = []
-            for app in APPS:
-                name = app.get("name")
-                if name in selected:
-                    kws = app.get("keywords", [])
-                    keywords.extend(kws)
-            return any((kw or "").lower() in t for kw in keywords)
-        except Exception:
-            return False
-
-    def is_our_window(self, hwnd: int) -> bool:
-        """判断句柄是否属于本程序进程"""
-        try:
-            import win32process
-            _, pid = win32process.GetWindowThreadProcessId(hwnd)
-            return pid == os.getpid()
-        except Exception:
-            return False
-
     # <============================窗口默认事件==============================>
 
     def closeEvent(self, event):
@@ -2088,7 +1986,7 @@ class AssistantMainWindow(QMainWindow):
             self.window_monitor.stop_monitoring()
 
         # 保存数据
-        self.save_scripts()
+        # self.save_scripts()
         self.save_config()
 
         event.accept()

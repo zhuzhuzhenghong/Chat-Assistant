@@ -164,19 +164,11 @@ class SendSettingsWidget(QWidget):
 class SettingsDialog(QDialog):
     """设置弹窗：左侧菜单，右侧内容"""
     # 对外信号
-    # 保留旧信号（兼容），新增位置/软件信号
-    dock_enabled_changed = Signal(bool)
-    dock_gap_changed = Signal(int)
     dock_position_changed = Signal(str)   # "left" | "right"
     dock_apps_changed = Signal(list)      # 选中的软件列表
 
     # 新增：发送模式信号（与主窗口联动）
     send_mode_changed = Signal(str)  # "直接发送" | "添加到输入框" | "添加到剪贴板"
-
-    # 兼容旧信号（可保留，不强制使用）
-    send_hotkey_changed = Signal(str)
-    send_delay_changed = Signal(int)
-    enter_to_send_changed = Signal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)

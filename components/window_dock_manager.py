@@ -19,14 +19,16 @@ class WindowDockManager(QObject):
         self.main_window = main_window
         self.target_window_handle = None
         self.is_docking_enabled = False
-        self.dock_gap = 1  # 吸附间隔，默认1px
+        self.dock_gap = 0  # 吸附间隔，默认1px
         self.dock_timer = QTimer()
         self.dock_timer.timeout.connect(self.update_dock_position)
-        self.dock_timer.setInterval(10)  # 20ms更新一次
+        self.dock_timer.setInterval(20)  # 20ms更新一次
         
         # 窗口位置缓存
         self.last_target_rect = None
         self.is_docking = False
+        # 吸附侧边：'right' 或 'left'
+        self.side = "right"
         
     def enable_docking(self, target_window_handle: int):
         """启用窗口吸附"""
@@ -53,6 +55,11 @@ class WindowDockManager(QObject):
         """设置吸附间隔"""
         self.dock_gap = max(0, gap)
         
+    def set_side(self, side: str):
+        """设置吸附侧边：'left' 或 'right'"""
+        if side not in ("left", "right"):
+            return
+        self.side = side
     def get_window_rect(self, window_handle: int) -> Optional[Tuple[int, int, int, int]]:
         """获取窗口矩形区域"""
         try:
@@ -81,7 +88,7 @@ class WindowDockManager(QObject):
             return False
             
     def calculate_dock_position(self, target_rect: Tuple[int, int, int, int]) -> Tuple[int, int, int, int]:
-        """计算吸附位置"""
+        """计算吸附位置（支持左/右侧）"""
         target_left, target_top, target_right, target_bottom = target_rect
         
         # 获取主窗口当前大小
@@ -92,8 +99,14 @@ class WindowDockManager(QObject):
         # 计算目标窗口的高度
         target_height = target_bottom - target_top
         
-        # 计算吸附位置：目标窗口右侧 + 间隔
-        dock_x = target_right + self.dock_gap
+        # 根据侧边计算吸附位置
+        if getattr(self, "side", "right") == "left":
+            # 目标窗口左侧：主窗口贴在目标窗口左边，预留间隔
+            dock_x = target_left - self.dock_gap - main_width
+        else:
+            # 目标窗口右侧：主窗口贴在目标窗口右边，预留间隔
+            dock_x = target_right + self.dock_gap
+        
         dock_y = target_top
         dock_width = main_width
         dock_height = target_height  # 高度与目标窗口保持一致

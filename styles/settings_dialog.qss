@@ -1,0 +1,102 @@
+/* 设置弹窗样式 */
+QDialog {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #a1c4fd, stop:1 #c2e9fb);
+    border: 1px solid #b8d4fe;
+}
+
+#settings_menu {
+    border: none;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #a1c4fd, stop:1 #c2e9fb);
+}
+
+#settings_menu::item {
+    padding: 6px 4px;
+}
+
+#settings_menu::item:selected {
+    background:qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                stop:.2 #8ec5fc, stop:1 #e0c3fc);
+    color:#ffffff;
+    outline: none;
+}
+
+#settings_stack {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #a1c4fd, stop:1 #c2e9fb);
+    border: none;
+}
+
+/* 右侧内容区域固定左侧分隔线 */
+#settings_right {
+    border-left: 1px solid rgba(0,0,0,0.08);
+}
+
+QLabel {
+    color: #222;
+    font-size: 13px;
+}
+QCheckBox {
+    font-size: 13px;
+}
+QSpinBox, QComboBox {
+    min-height: 22px;
+}
+
+#close_btn {
+    min-width: 72px;
+    min-height: 28px;
+    border-radius: 6px;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #7bb3e0, stop:1 #5b9bd5);
+    color: #333;
+    border: none;
+}
+#close_btn:hover {
+    filter: brightness(1.05);
+}
+
+#settings_menu:focus {
+    outline: none;
+    border: none;
+}
+
+/* 标签样式 */
+QLabel {
+    color: #495057;
+    font-size: 10pt;
+    font-weight: 500;
+    padding: 2px 0;
+}
+
+/* 发送模式行的标签：去掉上下 padding，便于与下拉框对齐 */
+#send_mode_label {
+    padding: 0;
+}
+
+/* 下拉框样式 */
+QComboBox {
+    background-color: white;
+    border: 1px solid #dee2e6;
+    color: #495057;
+    font-size: 9pt;
+    padding: 0px 6px;
+    min-height: 22px;
+}
+
+/* 透明滚动容器背景（软件列表） */
+#apps_scroll {
+    background: transparent;
+    border: none;
+}
+#apps_scroll QWidget#qt_scrollarea_viewport {
+    background: transparent;
+    border: none;
+}
+#apps_scroll QWidget {
+    background: transparent;
+}
+#apps_scroll QScrollBar {
+    background: transparent;
+}

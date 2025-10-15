@@ -155,39 +155,40 @@ QPushButton {
 QPushButton#cancel_btn {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                 stop:0 #f8f9fa, stop:1 #e9ecef);
-    border-color: #dee2e6;
+    border:none;
     color: #6c757d;
 }
 
 QPushButton#cancel_btn:hover {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 #e9ecef, stop:1 #dee2e6);
-    border-color: #adb5bd;
+                stop:0 #f8f9fa, stop:1 #e9ecef);
+    border:none;
     color: #495057;
 }
 
 QPushButton#cancel_btn:pressed {
     background: #dee2e6;
-    border-color: #adb5bd;
+    border:none;
 }
 
 /* 确认按钮 */
 QPushButton#confirm_btn {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 #4a90d9, stop:1 #2d5aa0);
-    border-color: #2d5aa0;
+                stop:0 #7bb3e0, stop:1 #5b9bd5);
+    border:none;
     color: white;
 }
 
 QPushButton#confirm_btn:hover {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 #5ba0e9, stop:1 #3d6ab0);
-    border-color: #3d6ab0;
+                stop:0 #7bb3e0, stop:1 #5b9bd5);
+    border:none;
 }
 
 QPushButton#confirm_btn:pressed {
-    background: #2d5aa0;
-    border-color: #1a4480;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #7bb3e0, stop:1 #5b9bd5);
+    border:none;
 }
 
 QPushButton#confirm_btn:disabled {

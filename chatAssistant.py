@@ -695,7 +695,7 @@ class AssistantMainWindow(QMainWindow):
         parent_layout.addWidget(search_group)
 
         search_layout = QHBoxLayout(search_group)
-        search_layout.setContentsMargins(0, 0, 0, 0)
+        search_layout.setContentsMargins(2, 0, 2, 0)
 
         # 搜索框
         self.search_edit = SearchLineEdit("搜索话术...")  # 缩短placeholder文字

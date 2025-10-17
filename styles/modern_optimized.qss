@@ -279,7 +279,7 @@ QComboBox QAbstractItemView {
 
 /* 树形控件 */
 QTreeWidget {
-    border: 2px solid rgba(161, 196, 253, 0.4);
+    border:none;
     background: transparent;
     alternate-background-color: rgba(194, 233, 255, 0.1);
     color: #2d5aa0;

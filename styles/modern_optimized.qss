@@ -315,23 +315,12 @@ QTreeWidget::item:hover {
 /* 滚动条 */
 QScrollBar:vertical {
     background-color: transparent;
-    width: 14px;
-    margin: 0;
+    width: 8px;
 }
 
 QScrollBar::handle:vertical {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 #7bb3e0, stop:1 #5b9bd5);
-    border-radius: 6px;
-    min-height: 25px;
-    margin: 2px;
-}
-
-/* 移除滚动条hover效果 */
-
-QScrollBar::handle:vertical:pressed {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 #7bb3e0, stop:1 #5b9bd5);
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #8ec5fc, stop:1 #e0c3fc);
 }
 
 QScrollBar::add-line:vertical,
@@ -339,25 +328,6 @@ QScrollBar::sub-line:vertical {
     height: 0px;
 }
 
-QScrollBar:horizontal {
-    background-color: #f7fafc;
-    height: 14px;
-    margin: 0;
-}
-
-QScrollBar::handle:horizontal {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 #cbd5e0, stop:1 #a0aec0);
-    min-width: 25px;
-    margin: 2px;
-}
-
-/* 移除水平滚动条hover效果 */
-
-QScrollBar::add-line:horizontal,
-QScrollBar::sub-line:horizontal {
-    width: 0px;
-}
 
 /* Tab Widget */
 QTabWidget::pane {

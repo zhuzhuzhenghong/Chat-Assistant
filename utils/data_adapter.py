@@ -16,10 +16,16 @@ class DataAdapter:
 
     def __init__(self, api_manager: Optional[APIManager] = None):
         self.api_manager = api_manager
-        self.scripts_file = constants.real_scripts_rel_path
-        self.config_file = constants.real_config_rel_path
+        # 使用绝对路径，确保打包态/开发态一致
+        self.scripts_file = constants.real_scripts_abs_path
+        self.config_file = constants.real_config_abs_path
         # 索引缓存文件（与树保持同步）
-        self.index_file = constants.index_file
+        self.index_file = constants.index_abs_path
+        # 确保 data 目录存在
+        try:
+            os.makedirs(os.path.join(constants.file_abs_path, "data"), exist_ok=True)
+        except Exception:
+            pass
         # 用户ID：后端返回的整型ID；默认 0，避免 None 参与类型检查
         self.user_id: Optional[int] = 0
 

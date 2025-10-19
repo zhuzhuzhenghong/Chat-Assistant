@@ -314,14 +314,15 @@ QTreeWidget::item:hover {
 
 /* 滚动条 */
 QScrollBar:vertical {
-    background-color: #f7fafc;
+    background-color: transparent;
     width: 14px;
     margin: 0;
 }
 
 QScrollBar::handle:vertical {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 #cbd5e0, stop:1 #a0aec0);
+                stop:0 #7bb3e0, stop:1 #5b9bd5);
+    border-radius: 6px;
     min-height: 25px;
     margin: 2px;
 }
@@ -330,7 +331,7 @@ QScrollBar::handle:vertical {
 
 QScrollBar::handle:vertical:pressed {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 #718096, stop:1 #4a5568);
+                stop:0 #7bb3e0, stop:1 #5b9bd5);
 }
 
 QScrollBar::add-line:vertical,

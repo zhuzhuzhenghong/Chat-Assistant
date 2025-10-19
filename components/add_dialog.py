@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QPushButton, QLineEdit, QTextEdit, QComboBox, QGroupBox,
     QButtonGroup, QRadioButton, QCheckBox, QMessageBox, QFrame, QWidget
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QFile, QIODevice
 from PySide6.QtGui import QFont
 from typing import Dict, List, Optional, Any
 
@@ -190,12 +190,22 @@ class AddDialog(QDialog):
         parent_layout.addLayout(button_layout)
 
     def load_stylesheet(self):
-        """加载样式表"""
+        """加载样式表（优先 QRC，失败回退磁盘路径）"""
         try:
+            # 优先从资源文件读取
+            f = QFile(":/styles/add_dialog.qss")
+            if f.open(QIODevice.OpenModeFlag.ReadOnly | QIODevice.OpenModeFlag.Text):
+                try:
+                    qss = bytes(f.readAll()).decode("utf-8")
+                    self.setStyleSheet(qss)
+                    return
+                finally:
+                    f.close()
+            # 回退到磁盘路径（开发环境）
             qss_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "styles", "add_dialog.qss")
             if os.path.exists(qss_path):
-                with open(qss_path, 'r', encoding='utf-8') as f:
-                    self.setStyleSheet(f.read())
+                with open(qss_path, 'r', encoding='utf-8') as f2:
+                    self.setStyleSheet(f2.read())
         except Exception as e:
             print(f"加载添加弹窗样式表失败: {e}")
 

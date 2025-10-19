@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout, QVBoxLayout, QFormLayout, QGridLayout, QLabel, QCheckBox,
     QComboBox, QPushButton, QRadioButton, QButtonGroup, QScrollArea
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QFile, QIODevice
 import os
 from typing import Optional, List
 from utils.dock_apps import APPS
@@ -268,10 +268,20 @@ class SettingsDialog(QDialog):
 
     def _load_stylesheet(self):
         try:
+            # 优先从资源文件读取
+            f = QFile(":/styles/settings_dialog.qss")
+            if f.open(QIODevice.OpenModeFlag.ReadOnly | QIODevice.OpenModeFlag.Text):
+                try:
+                    qss = bytes(f.readAll()).decode("utf-8")
+                    self.setStyleSheet(qss)
+                    return
+                finally:
+                    f.close()
+            # 回退到磁盘路径（开发环境）
             qss_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "styles", "settings_dialog.qss")
             if os.path.exists(qss_path):
-                with open(qss_path, 'r', encoding='utf-8') as f:
-                    self.setStyleSheet(f.read())
+                with open(qss_path, 'r', encoding='utf-8') as f2:
+                    self.setStyleSheet(f2.read())
         except Exception as e:
             print(f"加载设置弹窗样式失败: {e}")
 

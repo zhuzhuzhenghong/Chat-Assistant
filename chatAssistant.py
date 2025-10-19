@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem, QGroupBox, QCheckBox, QComboBox, QFrame, QSplitter,
     QScrollArea, QTabWidget, QStatusBar, QMenuBar, QMenu, QMessageBox,
     QDialog, QDialogButtonBox, QProgressBar, QSpacerItem, QSizePolicy,
-    QLayout
+    QLayout, QSystemTrayIcon
 )
 from PySide6.QtCore import (
     Qt, QTimer, QThread, QObject, Signal, QSize, QPropertyAnimation,
@@ -31,6 +31,7 @@ from PySide6.QtGui import (
     QFont, QIcon, QPalette, QColor, QPixmap, QPainter, QBrush,
     QLinearGradient, QAction, QKeySequence, QCursor
 )
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
 # 导入原有模块
 import pyautogui
@@ -40,7 +41,7 @@ import win32con
 from utils.api_manager import APIManager
 from utils.data_adapter import DataAdapter
 import utils.utils as utils
-import utils.constants as constans
+import utils.constants as constants
 from utils.dock_apps import APPS
 
 # 导入主题管理器
@@ -330,6 +331,9 @@ class AssistantMainWindow(QMainWindow):
         # 设置窗口
         self.setup_window()
 
+        # 系统托盘图标
+        self.setup_tray()
+
         # 创建界面
         self.create_ui()
 
@@ -401,7 +405,7 @@ class AssistantMainWindow(QMainWindow):
         self.resize(300, 700)
 
         # 设置窗口图标（如果有的话）
-        # self.setWindowIcon(QIcon("styles/icons/app_icon.png"))
+        self.setWindowIcon(QIcon("static/icon/logo.png"))
 
         # 设置窗口置顶
         if self.always_on_top:
@@ -438,8 +442,6 @@ class AssistantMainWindow(QMainWindow):
         if not self.is_locked:
             self.target_window = window_handle
             self.target_title = window_title
-            print('window_handle', self.target_window)
-            print('target_title', self.target_title)
             # 若启用吸附，仅对被允许的软件进行吸附
             if self.dock_manager:
                 try:
@@ -481,6 +483,23 @@ class AssistantMainWindow(QMainWindow):
     def init_dock_manager(self):
         """初始化吸附管理器"""
         self.dock_manager = WindowDockManager(self)
+
+    def setup_tray(self):
+        """初始化系统托盘图标"""
+        try:
+            self.tray_icon = QSystemTrayIcon(QIcon("static/icon/app.ico"), self)
+            menu = QMenu(self)
+            show_action = QAction("显示", self)
+            show_action.triggered.connect(self.showNormal)
+            exit_action = QAction("退出", self)
+            exit_action.triggered.connect(QApplication.instance().quit)
+            menu.addAction(show_action)
+            menu.addAction(exit_action)
+            self.tray_icon.setContextMenu(menu)
+            self.tray_icon.setToolTip("秒回")
+            self.tray_icon.show()
+        except Exception as e:
+            print(f"系统托盘初始化失败: {e}")
 
     # <============================获取数据方法==============================>
 
@@ -1992,30 +2011,103 @@ class AssistantMainWindow(QMainWindow):
         event.accept()
 
 
+UNIQUE_KEY = "chatassistant_single_instance"
+
+def setup_single_instance():
+    """确保单实例运行；已有实例则连接并退出，否则启动本地服务器"""
+    socket = QLocalSocket()
+    socket.connectToServer(UNIQUE_KEY)
+    if socket.waitForConnected(100):
+        try:
+            socket.write(b"raise")
+            socket.flush()
+            socket.waitForBytesWritten(100)
+        except Exception:
+            pass
+        socket.disconnectFromServer()
+        return None
+    server = QLocalServer()
+    try:
+        QLocalServer.removeServer(UNIQUE_KEY)
+    except Exception:
+        pass
+    if not server.listen(UNIQUE_KEY):
+        return None
+    return server
+
+def bring_to_front(win):
+    """唤起主窗口"""
+    try:
+        win.showNormal()
+        win.raise_()
+        win.activateWindow()
+    except Exception:
+        pass
+
 def main():
-    # setup_pyqt_exception_handling()
     """主函数"""
-    constans.file_abs_path = os.path.dirname(os.path.abspath(__file__))
+    # 创建 Qt 应用
     app = QApplication(sys.argv)
+    QApplication.setQuitOnLastWindowClosed(False)
+
+    # 单实例控制：如检测到已有实例，直接退出；否则监听本地服务器
+    server = setup_single_instance()
+    if server is None:
+        # 已有实例：二次启动仅用于唤醒，直接退出当前进程
+        sys.exit(0)
 
     # 设置应用程序信息
     app.setApplicationName("秒回")
     app.setApplicationVersion("2.0")
     app.setOrganizationName("秒回团队")
 
-    # 应用优化主题（推荐使用优化现代主题）
+    # 应用主题（内嵌优先，开发环境自动回退）
+    applied = False
     try:
-        theme_manager.apply_theme(app, "modern_optimized")
-        print("✅ 已应用优化现代主题")
-    except Exception as e:
-        print(f"⚠️ 主题加载失败: {e}")
+        import styles_rc  # 可选：打包有该模块，开发环境可能没有
+    except ImportError:
+        styles_rc = None
+
+    if styles_rc:
+        try:
+            from PySide6.QtCore import QFile
+            f = QFile(":/styles/modern_optimized.qss")
+            if f.open(QFile.ReadOnly | QFile.Text):
+                app.setStyleSheet(bytes(f.readAll()).decode("utf-8"))
+                f.close()
+                print("✅ 已应用内嵌样式")
+                applied = True
+        except Exception as e:
+            print(f"⚠️ 内嵌样式加载失败: {e}")
+
+    if not applied:
+        try:
+            theme_manager.apply_theme(app, "modern_optimized")
+            print("✅ 本地开发使用文件样式")
+        except Exception as e:
+            print(f"⚠️ 主题加载失败: {e}")
 
     # 创建主窗口
     window = AssistantMainWindow()
+
+    # 新连接时唤起主窗口
+    if server:
+        def _on_new_connection():
+            try:
+                sock = server.nextPendingConnection()
+                bring_to_front(window)
+                if sock:
+                    sock.close()
+            except Exception:
+                bring_to_front(window)
+        server.newConnection.connect(_on_new_connection)
+
     window.show()
 
-    # 运行应用程序
+    # 运行应用程序事件循环
     sys.exit(app.exec())
+
+
 
 
 if __name__ == "__main__":

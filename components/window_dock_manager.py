@@ -48,10 +48,6 @@ class WindowDockManager(QObject):
         self.dock_timer.stop()
         self.last_target_rect = None
 
-    def set_dock_gap(self, gap: int):
-        """设置吸附间隔"""
-        self.dock_gap = max(0, gap)
-
     def set_side(self, side: str):
         """设置吸附侧边：'left' 或 'right'"""
         if side not in ("left", "right"):

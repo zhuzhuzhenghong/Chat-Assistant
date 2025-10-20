@@ -200,14 +200,14 @@ class WindowMonitor(QThread):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.monitoring = True
-        self.is_locked = False
+        self.position_locked = False
         self.my_window_handle = None
 
     def run(self):
         """监控线程主循环"""
         while self.monitoring:
             try:
-                if self.is_locked:
+                if self.position_locked:
                     self.msleep(500)
                     continue
 
@@ -360,16 +360,14 @@ class AssistantMainWindow(QMainWindow):
         # 窗口跟踪
         self.target_window = None
         self.target_title = "无"
-        self.is_locked = False
+        self.always_on_top = True
 
         # 发送模式配置
         self.send_mode = "直接发送"
-        self.always_on_top = True
-        self.position_locked = False
 
         # 吸附功能
         self.dock_enabled = False
-        self.dock_gap = 1
+        self.position_locked = False
 
         # 新增：吸附位置与可吸附软件初始化
         self.dock_position = "right"
@@ -401,15 +399,15 @@ class AssistantMainWindow(QMainWindow):
         self.setMinimumSize(300, 500)
 
         # 设置无边框窗口
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.FramelessWindowHint)
         self.resize(300, 700)
 
         # 设置窗口图标（如果有的话）
         self.setWindowIcon(QIcon("static/icon/logo.png"))
 
         # 设置窗口置顶
-        if self.always_on_top:
-            self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        # if self.always_on_top:
+        #     self.on_topmost_changed(self.always_on_top)
 
     # <============================监控窗口相关方法==============================>
 
@@ -439,21 +437,21 @@ class AssistantMainWindow(QMainWindow):
 
     def on_window_changed(self, window_handle: int, window_title: str):
         """窗口变化事件"""
-        if not self.is_locked:
+        if not self.position_locked:
             self.target_window = window_handle
             self.target_title = window_title
             # 若启用吸附，仅对被允许的软件进行吸附
             if self.dock_manager:
                 try:
                     if self.dock_enabled:
-                        if self.is_window_allowed_for_dock(window_title):
-                            if not self.is_our_window(window_handle):
-                                self.dock_manager.enable_docking(window_handle)
-                            else:
-                                self.dock_manager.disable_docking()
+                        # if self.is_window_allowed_for_dock(window_title):
+                        if not self.is_our_window(window_handle):
+                            self.dock_manager.enable_docking(window_handle)
                         else:
-                            # 当前前台窗口不在允许列表，确保关闭吸附
                             self.dock_manager.disable_docking()
+                        # else:
+                        #     # 当前前台窗口不在允许列表，确保关闭吸附
+                        #     self.dock_manager.disable_docking()
                     else:
                         # 未启用时确保关闭
                         self.dock_manager.disable_docking()
@@ -936,10 +934,14 @@ class AssistantMainWindow(QMainWindow):
             # 添加话术内容
             if isinstance(title_data['data'], list):
                 for script_data in title_data['data']:
-                    display_text = script_data['content'] if len(script_data['content']) <= 50 else script_data[
-                                                                                                        'content'][
-                                                                                                    :50] + "..."
+                    title = (script_data.get('title') or '').strip()
+                    content = (script_data.get('content') or '').strip()
+                    base_text = f"{title} -- {content}" if title else content
+                    display_text = base_text if len(base_text) <= 50 else base_text[:50] + "..."
                     script_item = QTreeWidgetItem([f"💬 {display_text}"])
+                    bg = (script_data.get('bgColor') or '').strip() 
+                    if bg: 
+                        script_item.setBackground(0, QBrush(QColor(bg))) 
                     script_item.setData(0, Qt.ItemDataRole.UserRole, {
                         "type": "script",
                         "id": script_data['id'],
@@ -993,6 +995,7 @@ class AssistantMainWindow(QMainWindow):
 
     def on_topmost_changed(self, checked: bool):
         """置顶状态改变"""
+        print('checked',checked)
         self.always_on_top = checked
 
         # 使用 Windows API 切换置顶，避免窗口重建导致闪烁
@@ -1004,17 +1007,16 @@ class AssistantMainWindow(QMainWindow):
             SWP_NOMOVE = 0x0002
             SWP_NOSIZE = 0x0001
             SWP_NOACTIVATE = 0x0010
-            flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
+            SWP_SHOWWINDOW = 0x0040
+            # 可选：避免受所有者窗口影响
+            # SWP_NOOWNERZORDER = 0x0200
+            flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW
             hwnd = int(self.winId())
-            user32.SetWindowPos(hwnd, HWND_TOPMOST if checked else HWND_NOTOPMOST,
+            res = user32.SetWindowPos(hwnd, HWND_TOPMOST if checked else HWND_NOTOPMOST,
                                 0, 0, 0, 0, flags)
+            print('res',res)
         except Exception:
-            # 回退到 Qt 方式（可能会有轻微闪烁）
-            if checked:
-                self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
-            else:
-                self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowStaysOnTopHint)
-            self.show()
+           pass
 
         self.save_config()
 
@@ -1400,9 +1402,6 @@ class AssistantMainWindow(QMainWindow):
                 self.settings_dialog.dock_position_changed.connect(self.set_dock_position)
                 self.settings_dialog.dock_apps_changed.connect(self.set_dock_enabled_apps)
 
-            # 初始化弹窗显示值
-            self.settings_dialog.set_dock_values(enabled=getattr(self, 'dock_enabled', False),
-                                                 gap=getattr(self, 'dock_gap', 1))
             # 新增：初始化吸附位置与可吸附软件
             if hasattr(self.settings_dialog, 'set_dock_config'):
                 self.settings_dialog.set_dock_config(getattr(self, 'dock_position', "right"),

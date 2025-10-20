@@ -195,10 +195,12 @@ class DataAdapter:
                     for script_index, script in enumerate(level_two_data.get('data', [])):
                         script_id = script.get('id')
                         script_title = script.get('title', '')
+                        bgColor = script.get('bgColor', '')
                         script_content = script.get('content', '')
                         script_rec = {
                             'id': script_id,
                             'title': script_title,
+                            'bgColor': bgColor,
                             'content': script_content,
                             'typeId': type_id,
                             'levelOneId': level_one_id,
@@ -298,6 +300,7 @@ class DataAdapter:
                     {
                         'content': script['content'],
                         'title': script.get('title', ''),
+                        'bgColor': script.get('bgColor', ''),
                         'id': script['id']
                     } for script in scripts_list
                 ]

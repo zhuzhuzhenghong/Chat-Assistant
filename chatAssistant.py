@@ -493,15 +493,19 @@ class AssistantMainWindow(QMainWindow):
             # 双击托盘图标时显示窗口并取消吸附
             self.tray_icon.activated.connect(self._on_tray_activated)
             menu = QMenu(self)
-            show_action = QAction("显示", self)
-            show_action.triggered.connect(self.showNormal)
+
+            show_setting = QAction("设置", self)
+            show_setting.triggered.connect(self.show_settings_dialog)
+            menu.addAction(show_setting)
+
             exit_action = QAction("退出", self)
             exit_action.triggered.connect(QApplication.instance().quit)
-            menu.addAction(show_action)
             menu.addAction(exit_action)
+
             self.tray_icon.setContextMenu(menu)
             self.tray_icon.setToolTip("秒回")
             self.tray_icon.show()
+
         except Exception as e:
             print(f"系统托盘初始化失败: {e}")
 
@@ -618,19 +622,16 @@ class AssistantMainWindow(QMainWindow):
         except Exception as e:
             print(f'保存配置失败: {e}')
 
-    # 托盘最小化拦截：最小化时隐藏到托盘，避免桌面出现小窗口
-    def changeEvent(self, event):
-        try:
-            from PySide6.QtCore import QEvent, QTimer, Qt
-            if event.type() == QEvent.Type.WindowStateChange:
-                if self.windowState() & Qt.WindowState.WindowMinimized:
-                    # 用 hide 替代最小化，避免残留小窗口
-                    QTimer.singleShot(0, self.hide)
-                    event.accept()
-        except Exception as e:
-            print(f"拦截最小化失败: {e}")
-
     # 托盘关闭拦截：关闭窗口时隐藏到托盘，不退出程序
+    def on_minimize_clicked(self):
+        """最小化按钮统一隐藏到托盘"""
+        try:
+            from PySide6.QtCore import QTimer
+            # 最小化直接隐藏，避免被吸附恢复
+            QTimer.singleShot(0, self.hide)
+        except Exception as e:
+            print(f"最小化到托盘失败: {e}")
+
     def closeEvent(self, event):
         try:
             from PySide6.QtWidgets import QSystemTrayIcon
@@ -660,7 +661,7 @@ class AssistantMainWindow(QMainWindow):
 
         # 连接标题栏信号
         # self.title_bar.close_clicked.connect(self.close)
-        self.title_bar.minimize_clicked.connect(self.showMinimized)
+        self.title_bar.minimize_clicked.connect(self.on_minimize_clicked)
         self.title_bar.dock_toggled.connect(self.on_dock_changed)
         self.title_bar.lock_toggled.connect(self.on_lock_changed)
         self.title_bar.topmost_toggled.connect(self.on_topmost_changed)
@@ -967,9 +968,9 @@ class AssistantMainWindow(QMainWindow):
                     base_text = f"{title} -- {content}" if title else content
                     display_text = base_text if len(base_text) <= 50 else base_text[:50] + "..."
                     script_item = QTreeWidgetItem([f"💬 {display_text}"])
-                    bg = (script_data.get('bgColor') or '').strip() 
-                    if bg: 
-                        script_item.setBackground(0, QBrush(QColor(bg))) 
+                    bg = (script_data.get('bgColor') or '').strip()
+                    if bg:
+                        script_item.setBackground(0, QBrush(QColor(bg)))
                     script_item.setData(0, Qt.ItemDataRole.UserRole, {
                         "type": "script",
                         "id": script_data['id'],
@@ -993,19 +994,6 @@ class AssistantMainWindow(QMainWindow):
         self.dock_enabled = checked
 
         if checked:
-            # if not self.target_window:
-            #     self.title_bar.set_dock_state(False)
-            #     self.dock_enabled = False
-            #     QMessageBox.warning(self, "警告", "没有检测到目标窗口！请先选择一个窗口。")
-            #     return
-            #
-            # # 检查是否允许当前软件吸附
-            # if not self.is_window_allowed_for_dock(self.target_title or ""):
-            #     self.title_bar.set_dock_state(False)
-            #     self.dock_enabled = False
-            #     QMessageBox.information(self, "提示", "当前窗口未在允许吸附的软件列表中。请在设置中勾选对应软件后再试。")
-            #     return
-
             # 启用吸附
             if self.dock_manager:
                 self.dock_manager.enable_docking(self.target_window)
@@ -1020,10 +1008,10 @@ class AssistantMainWindow(QMainWindow):
         """系统托盘激活事件：左键双击显示并取消吸附"""
         try:
             if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+                # 取消吸附（先关闭，避免定时器竞态导致再次隐藏/最小化）
+                self.on_dock_changed(False)
                 # 展示主窗口（保持不进任务栏，因为设置了 Qt.Tool）
                 self.showNormal()
-                # 取消吸附
-                self.on_dock_changed(False)
                 # 同步标题栏按钮状态（如果存在）
                 if hasattr(self, "title_bar") and self.title_bar:
                     try:
@@ -2053,6 +2041,7 @@ class AssistantMainWindow(QMainWindow):
 
 UNIQUE_KEY = "chatassistant_single_instance"
 
+
 def setup_single_instance():
     """确保单实例运行；已有实例则连接并退出，否则启动本地服务器"""
     socket = QLocalSocket()
@@ -2075,6 +2064,7 @@ def setup_single_instance():
         return None
     return server
 
+
 def bring_to_front(win):
     """唤起主窗口"""
     try:
@@ -2083,6 +2073,7 @@ def bring_to_front(win):
         win.activateWindow()
     except Exception:
         pass
+
 
 def main():
     """主函数"""
@@ -2140,14 +2131,13 @@ def main():
                     sock.close()
             except Exception:
                 bring_to_front(window)
+
         server.newConnection.connect(_on_new_connection)
 
     window.show()
 
     # 运行应用程序事件循环
     sys.exit(app.exec())
-
-
 
 
 if __name__ == "__main__":

@@ -125,7 +125,7 @@ class WindowDockManager(QObject):
                 self.main_window.showMinimized()
             return
         else:
-            # 目标窗口恢复时，恢复主窗口
+            # 目标窗口恢复时，仅在主窗体处于最小化状态才恢复，避免抢回用户的隐藏到托盘
             if self.main_window.isMinimized():
                 self.main_window.showNormal()
 

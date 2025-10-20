@@ -13,6 +13,7 @@ from typing import Dict, Any, Optional
 import logging
 import traceback
 import random
+import ctypes
 
 # PySide6 imports
 from PySide6.QtWidgets import (
@@ -398,16 +399,19 @@ class AssistantMainWindow(QMainWindow):
         self.setWindowTitle("秒回")
         self.setMinimumSize(300, 500)
 
-        # 设置无边框窗口
+        # 设置无边框窗口（避免任务栏显示）
         self.setWindowFlags(Qt.FramelessWindowHint)
+        self.setWindowFlag(Qt.WindowType.Tool, True)
         self.resize(300, 700)
 
         # 设置窗口图标（如果有的话）
         self.setWindowIcon(QIcon("static/icon/logo.png"))
+        # 关闭主窗口不退出，托盘常驻
+        QApplication.setQuitOnLastWindowClosed(False)
 
-        # 设置窗口置顶
-        # if self.always_on_top:
-        #     self.on_topmost_changed(self.always_on_top)
+        # 设置窗口置顶：窗口显示后延迟应用，确保句柄有效，避免 ERROR_INVALID_WINDOW_HANDLE(1400)
+        if self.always_on_top:
+            QTimer.singleShot(0, lambda: self.on_topmost_changed(self.always_on_top))
 
     # <============================监控窗口相关方法==============================>
 
@@ -486,6 +490,8 @@ class AssistantMainWindow(QMainWindow):
         """初始化系统托盘图标"""
         try:
             self.tray_icon = QSystemTrayIcon(QIcon("static/icon/app.ico"), self)
+            # 双击托盘图标时显示窗口并取消吸附
+            self.tray_icon.activated.connect(self._on_tray_activated)
             menu = QMenu(self)
             show_action = QAction("显示", self)
             show_action.triggered.connect(self.showNormal)
@@ -611,6 +617,28 @@ class AssistantMainWindow(QMainWindow):
                 self.data_adapter.save_local_config_data(config)
         except Exception as e:
             print(f'保存配置失败: {e}')
+
+    # 托盘最小化拦截：最小化时隐藏到托盘，避免桌面出现小窗口
+    def changeEvent(self, event):
+        try:
+            from PySide6.QtCore import QEvent, QTimer, Qt
+            if event.type() == QEvent.Type.WindowStateChange:
+                if self.windowState() & Qt.WindowState.WindowMinimized:
+                    # 用 hide 替代最小化，避免残留小窗口
+                    QTimer.singleShot(0, self.hide)
+                    event.accept()
+        except Exception as e:
+            print(f"拦截最小化失败: {e}")
+
+    # 托盘关闭拦截：关闭窗口时隐藏到托盘，不退出程序
+    def closeEvent(self, event):
+        try:
+            from PySide6.QtWidgets import QSystemTrayIcon
+            if hasattr(self, "tray_icon") and isinstance(self.tray_icon, QSystemTrayIcon):
+                self.hide()
+                event.ignore()
+        except Exception as e:
+            print(f"关闭事件拦截失败: {e}")
 
     # <============================创建界面元素方法==============================>
 
@@ -988,36 +1016,49 @@ class AssistantMainWindow(QMainWindow):
 
         self.save_config()
 
+    def _on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason):
+        """系统托盘双击事件：显示窗口并取消吸附"""
+        try:
+            if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+                # 展示主窗口（保持不进任务栏，因为设置了 Qt.Tool）
+                self.showNormal()
+                # 取消吸附
+                self.on_dock_changed(False)
+                # 同步标题栏按钮状态（如果存在）
+                if hasattr(self, "title_bar") and self.title_bar:
+                    try:
+                        self.title_bar.set_dock_state(False)
+                    except Exception:
+                        pass
+                # 可选：激活到前台，如不需要可以移除以进一步减少闪烁
+                self.activateWindow()
+        except Exception as e:
+            print(f"托盘双击处理失败: {e}")
+
     def on_lock_changed(self, checked: bool):
         """锁定状态改变"""
         self.position_locked = checked
         self.save_config()
 
     def on_topmost_changed(self, checked: bool):
-        """置顶状态改变"""
-        print('checked',checked)
+        """置顶状态改变（仅使用 Qt 方式）"""
         self.always_on_top = checked
+        # 暂停更新，降低闪烁
+        self.setUpdatesEnabled(False)
 
-        # 使用 Windows API 切换置顶，避免窗口重建导致闪烁
-        try:
-            import ctypes
-            user32 = ctypes.windll.user32
-            HWND_TOPMOST = -1
-            HWND_NOTOPMOST = -2
-            SWP_NOMOVE = 0x0002
-            SWP_NOSIZE = 0x0001
-            SWP_NOACTIVATE = 0x0010
-            SWP_SHOWWINDOW = 0x0040
-            # 可选：避免受所有者窗口影响
-            # SWP_NOOWNERZORDER = 0x0200
-            flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW
-            hwnd = int(self.winId())
-            res = user32.SetWindowPos(hwnd, HWND_TOPMOST if checked else HWND_NOTOPMOST,
-                                0, 0, 0, 0, flags)
-            print('res',res)
-        except Exception:
-           pass
+        # 优先用 QWindow 层面切换置顶，减少窗口重建
+        wh = self.windowHandle()
+        if wh is not None:
+            wh.setFlag(Qt.WindowType.WindowStaysOnTopHint, checked)
+        else:
+            self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, checked)
 
+        # 若窗口不可见或最小化，恢复到正常显示；避免调用 show()/raise_/activateWindow
+        if (not self.isVisible()) or (self.windowState() & Qt.WindowState.WindowMinimized):
+            self.showNormal()
+
+        # 恢复更新并保存配置
+        self.setUpdatesEnabled(True)
         self.save_config()
 
     # <============================话术类型点击事件相关方法==============================>

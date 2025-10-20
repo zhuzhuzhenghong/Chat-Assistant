@@ -77,7 +77,7 @@ class WindowDockManager(QObject):
     def is_window_visible(self, window_handle: int) -> bool:
         """检查窗口是否可见"""
         try:
-            return win32gui.IsWindowVisible(window_handle)
+            return bool(win32gui.IsWindowVisible(window_handle))
         except:
             return False
 

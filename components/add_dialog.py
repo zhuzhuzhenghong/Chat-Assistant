@@ -57,7 +57,6 @@ class AddDialog(QDialog):
         self.init_data()
         self.setup_ui()
         self.setup_connections()
-        # self.update_ui_permissions()
 
     def init_data(self):
         # 初始化数据适配器
@@ -221,28 +220,6 @@ class AddDialog(QDialog):
         # 按钮点击
         self.cancel_btn.clicked.connect(self.reject)
         self.confirm_btn.clicked.connect(self.on_confirm)
-
-    # def update_ui_permissions(self):
-    #     """根据权限更新UI"""
-    #     # 根据用户权限禁用相应的选项
-    #     if not self.user_permissions.get('add_secondary_tab', True):
-    #         self.add_level_one_radio.setEnabled(False)
-    #         self.add_level_one_radio.setToolTip("您没有添加一级分类的权限")
-
-    #     if not self.user_permissions.get('add_category', True):
-    #         self.add_level_two_radio.setEnabled(False)
-    #         self.add_level_two_radio.setToolTip("您没有添加二级分类的权限")
-
-    #     if not self.user_permissions.get('add_script', True):
-    #         self.add_content_radio.setEnabled(False)
-    #         self.add_content_radio.setToolTip("您没有添加话术内容的权限")
-
-    #     # 如果没有任何权限，选择第一个可用的选项
-    #     if not self.add_level_one_radio.isEnabled():
-    #         if self.add_level_two_radio.isEnabled():
-    #             self.add_level_two_radio.setChecked(True)
-    #         elif self.add_content_radio.isEnabled():
-    #             self.add_content_radio.setChecked(True)
 
     def on_type_changed(self, button):
         """添加类型变化"""
@@ -439,14 +416,12 @@ class AddDialog(QDialog):
                     QMessageBox.warning(self, "警告", "请输入话术内容！")
                     return
 
-                print('1111111',self.data_adapter.get_script_list(self.type_id, self.level_one_id,
-                                                                       self.level_two_id))
-                result = list(filter(lambda item: item['content'] == content,
-                                     self.data_adapter.get_script_list(self.type_id, self.level_one_id,
-                                                                       self.level_two_id)))
-                if len(result) > 0:
-                    QMessageBox.warning(self, "警告", f"话术内容 '{content}' 已存在！")
-                    return
+                # result = list(filter(lambda item: item['content'] == content,
+                #                      self.data_adapter.get_script_list(self.type_id, self.level_one_id,
+                #                                                        self.level_two_id)))
+                # if len(result) > 0:
+                #     QMessageBox.warning(self, "警告", f"话术内容 '{content}' 已存在！")
+                #     return
 
                 self.content_added_signal.emit(level_two_id, content, script_title_value)
 
@@ -459,7 +434,7 @@ class AddDialog(QDialog):
     def handle_edit_confirm(self):
         """处理编辑确认"""
         new_value = None
-        script_title_value = None
+        script_title_value = self.script_title_input.text().strip()
 
         # 根据不同编辑类型，取相应组件的值
         if self.edit_type == 'level_one':
@@ -467,7 +442,6 @@ class AddDialog(QDialog):
         elif self.edit_type == 'level_two':
             new_value = self.level_two_input.text().strip()
         elif self.edit_type == 'script':
-            script_title_value = self.script_title_input.text().strip()
             new_value = self.content_input.toPlainText().strip()
 
         # 只有在添加一级分类或二级分类时才需要名称
@@ -476,10 +450,6 @@ class AddDialog(QDialog):
             return
         elif self.edit_type == 'script' and not new_value:
             QMessageBox.warning(self, "警告", "请输入话术内容！")
-            return
-
-        if new_value == self.old_value:
-            QMessageBox.information(self, "提示", "内容没有变化！")
             return
 
         try:
@@ -504,12 +474,12 @@ class AddDialog(QDialog):
 
             elif self.edit_type == 'script':
                 # 编辑话术内容
-                result = list(filter(lambda item: item['content'] == new_value,
-                                     self.data_adapter.get_script_list(self.type_id, self.level_one_id,
-                                                                       self.level_two_id)))
-                if len(result) > 0:
-                    QMessageBox.warning(self, "警告", f"话术 '{new_value}' 已存在！")
-                    return
+                # result = list(filter(lambda item: item['content'] == new_value,
+                #                      self.data_adapter.get_script_list(self.type_id, self.level_one_id,
+                #                                                        self.level_two_id)))
+                # if len(result) > 0:
+                #     QMessageBox.warning(self, "警告", f"话术 '{new_value}' 已存在！")
+                #     return
                 self.content_edited_signal.emit(self.script_id, new_value, script_title_value)
 
             # 成功编辑后关闭对话框
@@ -517,11 +487,6 @@ class AddDialog(QDialog):
 
         except Exception as e:
             QMessageBox.critical(self, "错误", f"编辑失败：{str(e)}")
-
-    # def set_user_permissions(self, permissions: Dict[str, bool]):
-    #     """设置用户权限"""
-    #     self.user_permissions = permissions
-    #     self.update_ui_permissions()
 
     def hide_label_by_text(self, label_text: str):
         """根据文本隐藏标签"""
@@ -606,7 +571,6 @@ class AddDialog(QDialog):
 
     def set_add_mode(self, add_type: str, id: int = 0):
         """设置新增模式"""
-        print('id',id)
         # 设置添加类型('level_one', 'level_two', 'script')
         self.set_default_type(add_type)
 

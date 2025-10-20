@@ -1017,7 +1017,7 @@ class AssistantMainWindow(QMainWindow):
         self.save_config()
 
     def _on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason):
-        """系统托盘双击事件：显示窗口并取消吸附"""
+        """系统托盘激活事件：左键双击显示并取消吸附"""
         try:
             if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
                 # 展示主窗口（保持不进任务栏，因为设置了 Qt.Tool）

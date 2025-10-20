@@ -296,7 +296,7 @@ class ModernTreeWidget(QTreeWidget):
         """设置树形控件样式"""
         self.setHeaderHidden(True)
         self.setRootIsDecorated(True)
-        self.setAlternatingRowColors(True)
+        self.setAlternatingRowColors(False)
         self.setIndentation(20)
         self.setMinimumHeight(200)
         # 设置更紧凑的行高
@@ -305,6 +305,19 @@ class ModernTreeWidget(QTreeWidget):
         self.setContentsMargins(0, 0, 0, 0)
         self.setViewportMargins(0, 0, 0, 0)
 
+
+from PySide6.QtWidgets import QStyledItemDelegate
+from PySide6.QtGui import QPainter
+
+class ColorAwareDelegate(QStyledItemDelegate):
+    """根据项的 BackgroundRole 主动绘制背景，避免被样式表覆盖"""
+    def paint(self, painter: QPainter, option, index):
+        brush = index.data(Qt.ItemDataRole.BackgroundRole)
+        if isinstance(brush, QBrush) and brush.color().isValid():
+            painter.save()
+            painter.fillRect(option.rect, brush)
+            painter.restore()
+        super().paint(painter, option, index)
 
 class AssistantMainWindow(QMainWindow):
     """主窗口类"""
@@ -579,14 +592,14 @@ class AssistantMainWindow(QMainWindow):
                 if success:
                     self.load_data_from_adapter()
                     self.update_all_ui()
-                    self.status_label.setText("云端数据同步成功")
+                    print("云端数据同步成功")
                     return True
                 else:
-                    self.status_label.setText("使用默认数据")
+                    print("使用默认数据")
                     return False
         except Exception as e:
             print(f"同步云端数据失败: {e}")
-            self.status_label.setText("数据同步失败，使用本地数据")
+            print("数据同步失败，使用本地数据")
             return False
 
     def load_current_scripts_data(self, isClear: bool = False):
@@ -712,7 +725,25 @@ class AssistantMainWindow(QMainWindow):
 
         # 树形控件
         self.tree_widget = ModernTreeWidget()
+        # 清除样式表以避免全局样式覆盖项背景
+        try:
+            self.tree_widget.setStyleSheet("")
+        except Exception:
+            pass
+        # 设置委托，优先使用项的 BackgroundRole 绘制背景
+        try:
+            self.tree_widget.setItemDelegate(ColorAwareDelegate(self.tree_widget))
+        except Exception:
+            pass
         self.tree_widget.setHeaderHidden(True)
+        # 半透明背景（提升整体透明度），不覆盖单项自定义背景
+        try:
+            self.tree_widget.setStyleSheet(
+                "QTreeWidget { background-color: rgba(255, 255, 255, 128); }"
+                "QTreeWidget::item { background-color: transparent; }"
+            )
+        except Exception:
+            pass
         self.tree_widget.itemDoubleClicked.connect(self.on_tree_double_click)
         self.tree_widget.itemClicked.connect(self.on_tree_single_click)
         self.tree_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -736,11 +767,6 @@ class AssistantMainWindow(QMainWindow):
         """创建状态栏部分"""
         status_layout = QHBoxLayout()
         parent_layout.addLayout(status_layout)
-
-        # 状态标签
-        self.status_label = QLabel("就绪")
-        self.status_label.setObjectName("status_label")
-        status_layout.addWidget(self.status_label, 1)
 
         # 登录按钮
         self.login_btn = ModernButton("登录", "secondary")
@@ -954,7 +980,17 @@ class AssistantMainWindow(QMainWindow):
                     script_item = QTreeWidgetItem([f"💬 {display_text}"])
                     bg = (script_data.get('bgColor') or '').strip()
                     if bg:
-                        script_item.setBackground(0, QBrush(QColor(bg)))
+                        color: QColor = QColor(bg) 
+                        if color.isValid(): 
+                            if color.alpha() == 255:
+                                color.setAlpha(128)
+                            # 同时设置 BackgroundRole 与 setBackground，避免样式优先级导致不生效
+                            brush = QBrush(color)
+                            script_item.setData(0, Qt.ItemDataRole.BackgroundRole, brush)
+                            script_item.setBackground(0, brush)
+                        else: 
+                            print(f"无效颜色: {bg}")
+                        # script_item.setBackground(0, QBrush(QColor(bg)))
                     script_item.setData(0, Qt.ItemDataRole.UserRole, {
                         "type": "script",
                         "id": script_data['id'],
@@ -1238,12 +1274,12 @@ class AssistantMainWindow(QMainWindow):
     def send_script_directly(self, script_content: str):
         """直接发送话术（不依赖发送模式设置）"""
         if not script_content.strip():
-            self.status_label.setText("❌ 话术内容为空")
+            print("❌ 话术内容为空")
             return
 
         # 检查目标窗口
         if not hasattr(self, 'target_window') or not self.target_window:
-            self.status_label.setText("❌ 请先选择目标窗口")
+            print("❌ 请先选择目标窗口")
             return
 
         try:
@@ -1252,20 +1288,20 @@ class AssistantMainWindow(QMainWindow):
                     self.target_window, script_content
                 )
                 if success:
-                    self.status_label.setText("✅ 📤 话术已直接发送")
+                    print("✅ 📤 话术已直接发送")
                 else:
-                    self.status_label.setText("❌ 发送失败，请检查目标窗口")
+                    print("❌ 发送失败，请检查目标窗口")
             else:
-                self.status_label.setText("❌ API管理器未初始化")
+                print("❌ API管理器未初始化")
         except Exception as e:
-            self.status_label.setText(f"❌ 发送错误: {str(e)}")
+            print(f"❌ 发送错误: {str(e)}")
 
     # 功能方法
     def send_script_text(self, script: str):
         """发送话术文本"""
         if self.send_mode == "添加到剪贴板":
             pyperclip.copy(script)
-            self.status_label.setText("已复制到剪贴板")
+            print("已复制到剪贴板")
             return
         elif self.send_mode == "添加到输入框":
             if not self.target_window:
@@ -1285,7 +1321,7 @@ class AssistantMainWindow(QMainWindow):
         """粘贴到输入框"""
         try:
             if self.target_window and not win32gui.IsWindow(self.target_window):
-                self.status_label.setText("目标窗口已关闭")
+                print("目标窗口已关闭")
                 return
 
             if self.target_window:
@@ -1295,16 +1331,16 @@ class AssistantMainWindow(QMainWindow):
 
             pyperclip.copy(text)
             pyautogui.hotkey('ctrl', 'v')
-            self.status_label.setText("已添加到输入框")
+            print("已添加到输入框")
 
         except Exception as e:
-            self.status_label.setText(f"添加失败: {str(e)}")
+            print(f"添加失败: {str(e)}")
 
     def send_text_direct(self, text: str):
         """直接发送文本"""
         try:
             if self.target_window and not win32gui.IsWindow(self.target_window):
-                self.status_label.setText("目标窗口已关闭")
+                print("目标窗口已关闭")
                 return
 
             if self.target_window:
@@ -1316,10 +1352,10 @@ class AssistantMainWindow(QMainWindow):
             pyautogui.hotkey('ctrl', 'v')
             time.sleep(0.1)
             pyautogui.press('enter')
-            self.status_label.setText("已直接发送")
+            print("已直接发送")
 
         except Exception as e:
-            self.status_label.setText(f"发送失败: {str(e)}")
+            print(f"发送失败: {str(e)}")
 
     # <============================权限控制相关方法==============================>
 
@@ -1395,7 +1431,7 @@ class AssistantMainWindow(QMainWindow):
             # 保存配置
             self.save_config()
 
-            self.status_label.setText("已登出")
+            print("已登出")
         except Exception as e:
             QMessageBox.critical(self, "登出失败", f"登出时发生错误: {str(e)}")
 
@@ -1482,7 +1518,7 @@ class AssistantMainWindow(QMainWindow):
         """设置发送模式"""
         self.send_mode = mode
         self.save_config()
-        self.status_label.setText(f"发送模式: {mode}")
+        print(f"发送模式: {mode}")
 
     def set_dock_position(self, pos: str):
         """设置吸附位置（left/right）"""
@@ -1490,7 +1526,7 @@ class AssistantMainWindow(QMainWindow):
             return
         self.dock_position = pos
         self.save_config()
-        self.status_label.setText(f"📎 吸附位置: {'左侧' if pos == 'left' else '右侧'}")
+        print(f"📎 吸附位置: {'左侧' if pos == 'left' else '右侧'}")
         # 若已启用吸附且存在目标窗口，可根据需要刷新吸附
         try:
             # 先设置吸附侧边
@@ -1518,7 +1554,7 @@ class AssistantMainWindow(QMainWindow):
         # 仅存储并持久化，具体吸附逻辑使用时根据列表判断
         self.dock_apps = list(apps) if isinstance(apps, list) else []
         self.save_config()
-        self.status_label.setText(f"📎 可吸附软件: {', '.join(self.dock_apps) if self.dock_apps else '未选择'}")
+        print(f"📎 可吸附软件: {', '.join(self.dock_apps) if self.dock_apps else '未选择'}")
         # 切换允许列表后，如果当前窗口不允许，则关闭吸附
         try:
             if self.dock_enabled and self.dock_manager:
@@ -1598,13 +1634,13 @@ class AssistantMainWindow(QMainWindow):
                 success = self.data_adapter.push_local_scripts_data()
                 if success:
                     QMessageBox.information(self, "上传成功", "数据已成功上传到云端！")
-                    self.status_label.setText("数据上传成功")
+                    print("数据上传成功")
                 else:
                     QMessageBox.critical(self, "上传失败", "数据上传失败，请稍后重试")
-                    self.status_label.setText("数据上传失败")
+                    print("数据上传失败")
         except Exception as e:
             QMessageBox.critical(self, "上传失败", f"上传时发生错误: {str(e)}")
-            self.status_label.setText(f"上传失败: {str(e)}")
+            print(f"上传失败: {str(e)}")
 
     def download_data_from_cloud(self):
         """从云端下载数据"""
@@ -1639,13 +1675,13 @@ class AssistantMainWindow(QMainWindow):
                     self.load_data_from_adapter()
                     self.update_all_ui()
                     QMessageBox.information(self, "下载成功", "数据已成功从云端下载！")
-                    self.status_label.setText("数据下载成功")
+                    print("数据下载成功")
                 else:
                     QMessageBox.warning(self, "下载失败", "云端暂无数据或下载失败")
-                    self.status_label.setText("云端暂无数据")
+                    print("云端暂无数据")
         except Exception as e:
             QMessageBox.critical(self, "下载失败", f"下载时发生错误: {str(e)}")
-            self.status_label.setText(f"下载失败: {str(e)}")
+            print(f"下载失败: {str(e)}")
 
     # <============================手动该改变窗口大小相关方法==============================>
 
@@ -1828,8 +1864,8 @@ class AssistantMainWindow(QMainWindow):
                 add_dialog.content_added_signal.connect(self.add_script_content_callback)
 
             # 连接弹窗关闭信号
-            add_dialog.accepted.connect(lambda: self.status_label.setText("✅ 内容添加成功"))
-            add_dialog.rejected.connect(lambda: self.status_label.setText("❌ 取消添加"))
+            add_dialog.accepted.connect(lambda: print("✅ 内容添加成功"))
+            add_dialog.rejected.connect(lambda: print("❌ 取消添加"))
 
             # 显示非模态弹窗
             add_dialog.show()
@@ -1900,8 +1936,8 @@ class AssistantMainWindow(QMainWindow):
                 edit_dialog.content_edited_signal.connect(self.edit_script_callback)
 
             # 连接弹窗关闭信号
-            edit_dialog.accepted.connect(lambda: self.status_label.setText("✅ 编辑成功"))
-            edit_dialog.rejected.connect(lambda: self.status_label.setText("❌ 取消编辑"))
+            edit_dialog.accepted.connect(lambda: print("✅ 编辑成功"))
+            edit_dialog.rejected.connect(lambda: print("❌ 取消编辑"))
 
             # 显示非模态弹窗
             edit_dialog.show()

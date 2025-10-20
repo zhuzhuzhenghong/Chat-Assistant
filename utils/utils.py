@@ -1,6 +1,5 @@
 import json
 import os
-from components.Input_dialog import ChineseInputDialog
 import threading
 import utils.constants as constants
 import uuid

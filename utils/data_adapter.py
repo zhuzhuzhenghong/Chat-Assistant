@@ -1,4 +1,6 @@
 import json
+
+
 import os
 from typing import Dict, Optional, Any, List, Tuple
 import threading
@@ -13,7 +15,6 @@ class DataAdapter:
     """数据适配器 - 用户登录后获取云端数据，获取不到则使用默认数据
     扩展：引入“四表分离 + 子集索引”的内存结构，保留树形持久化不变。
     """
-
     def __init__(self, api_manager: Optional[APIManager] = None):
         self.api_manager = api_manager
         # 使用绝对路径，确保打包态/开发态一致
@@ -86,7 +87,7 @@ class DataAdapter:
                 self.scripts_data = json.load(f)
         else:
             self.scripts_data = utils.init_scripts_data()
-
+            self.save_local_scripts_data()
         # 每次读取后重建索引
         self.rebuild_indexes()
 

@@ -227,13 +227,6 @@ class WindowMonitor(QThread):
                 print('监控线程主循环报错', e)
                 self.msleep(1000)
 
-    def stop_monitoring(self):
-        """停止监控"""
-        self.monitoring = False
-        self.quit()
-        self.wait()
-
-
 class ModernButton(QPushButton):
     """现代化按钮组件"""
 
@@ -372,7 +365,7 @@ class AssistantMainWindow(QMainWindow):
 
         # 新增：吸附位置与可吸附软件初始化
         self.dock_position = "right"
-        self.dock_apps = []
+        self.dock_apps = ['全部']
 
         # 用户登录状态
         self.current_user_id = None
@@ -448,14 +441,14 @@ class AssistantMainWindow(QMainWindow):
             if self.dock_manager:
                 try:
                     if self.dock_enabled:
-                        # if self.is_window_allowed_for_dock(window_title):
-                        if not self.is_our_window(window_handle):
-                            self.dock_manager.enable_docking(window_handle)
+                        if self.is_window_allowed_for_dock(window_title):
+                            if not self.is_our_window(window_handle):
+                                self.dock_manager.enable_docking(window_handle)
+                            else:
+                                self.dock_manager.disable_docking()
                         else:
+                            # 当前前台窗口不在允许列表，确保关闭吸附
                             self.dock_manager.disable_docking()
-                        # else:
-                        #     # 当前前台窗口不在允许列表，确保关闭吸附
-                        #     self.dock_manager.disable_docking()
                     else:
                         # 未启用时确保关闭
                         self.dock_manager.disable_docking()
@@ -626,20 +619,11 @@ class AssistantMainWindow(QMainWindow):
     def on_minimize_clicked(self):
         """最小化按钮统一隐藏到托盘"""
         try:
-            from PySide6.QtCore import QTimer
+            self.on_dock_changed(False)
             # 最小化直接隐藏，避免被吸附恢复
             QTimer.singleShot(0, self.hide)
         except Exception as e:
             print(f"最小化到托盘失败: {e}")
-
-    def closeEvent(self, event):
-        try:
-            from PySide6.QtWidgets import QSystemTrayIcon
-            if hasattr(self, "tray_icon") and isinstance(self.tray_icon, QSystemTrayIcon):
-                self.hide()
-                event.ignore()
-        except Exception as e:
-            print(f"关闭事件拦截失败: {e}")
 
     # <============================创建界面元素方法==============================>
 
@@ -1550,6 +1534,9 @@ class AssistantMainWindow(QMainWindow):
             selected = set(getattr(self, 'dock_apps', []) or [])
             if not selected:
                 return False
+            result = list(filter(lambda item: item == '全部', selected))
+            if len(result) > 0:
+                return True
             # 汇总选中项的关键词
             keywords = []
             found = False
@@ -1964,12 +1951,19 @@ class AssistantMainWindow(QMainWindow):
 
     def delete_level_one(self, level_one_id: int, level_one_name: str):
         """删除话术分类（使用 DataAdapter）"""
-        reply = QMessageBox.question(
-            self, "确认删除",
-            f"确定要删除一级分类 '{level_one_name}' 及其所有话术吗？",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Question)
+        msg.setWindowTitle("确认删除")
+        msg.setText(f"确定要删除一级分类 '{level_one_name}' 及其所有话术吗？")
+        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        # 设置中文按钮文本
+        yes_btn = msg.button(QMessageBox.Yes)
+        no_btn = msg.button(QMessageBox.No)
+        if yes_btn:
+            yes_btn.setText("确定")
+        if no_btn:
+            no_btn.setText("取消")
+        reply = msg.exec()
 
         if reply == QMessageBox.Yes:
             try:
@@ -1989,12 +1983,19 @@ class AssistantMainWindow(QMainWindow):
 
     def delete_level_two(self, level_two_id: int, level_two_name: str):
         """删除分类标题（使用 DataAdapter）"""
-        reply = QMessageBox.question(
-            self, "确认删除",
-            f"确定要删除二级分类 '{level_two_name}' 及其所有话术吗？",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Question)
+        msg.setWindowTitle("确认删除")
+        msg.setText(f"确定要删除二级分类 '{level_two_name}' 及其所有话术吗？")
+        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        # 设置中文按钮文本
+        yes_btn = msg.button(QMessageBox.Yes)
+        no_btn = msg.button(QMessageBox.No)
+        if yes_btn:
+            yes_btn.setText("确定")
+        if no_btn:
+            no_btn.setText("取消")
+        reply = msg.exec()
 
         if reply == QMessageBox.Yes:
             try:
@@ -2008,12 +2009,19 @@ class AssistantMainWindow(QMainWindow):
 
     def delete_script(self, script_id: int, content: str):
         """删除话术"""
-        reply = QMessageBox.question(
-            self, "确认删除",
-            f"确定要删除话术:\n{content[:100]}{'...' if len(content) > 100 else ''}",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Question)
+        msg.setWindowTitle("确认删除")
+        msg.setText(f"确定要删除话术:\n{content[:100]}{'...' if len(content) > 100 else ''}")
+        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        # 设置中文按钮文本
+        yes_btn = msg.button(QMessageBox.Yes)
+        no_btn = msg.button(QMessageBox.No)
+        if yes_btn:
+            yes_btn.setText("确定")
+        if no_btn:
+            no_btn.setText("取消")
+        reply = msg.exec()
 
         if reply == QMessageBox.Yes:
             try:
@@ -2024,24 +2032,7 @@ class AssistantMainWindow(QMainWindow):
                 print('ValueError', e)
                 QMessageBox.warning(self, "错误", "找不到要删除的话术！")
 
-    # <============================窗口默认事件==============================>
-
-    def closeEvent(self, event):
-        """窗口关闭事件"""
-        # 停止监控线程
-        if self.window_monitor:
-            self.window_monitor.stop_monitoring()
-
-        # 保存数据
-        # self.save_scripts()
-        self.save_config()
-
-        event.accept()
-
-
 UNIQUE_KEY = "chatassistant_single_instance"
-
-
 def setup_single_instance():
     """确保单实例运行；已有实例则连接并退出，否则启动本地服务器"""
     socket = QLocalSocket()

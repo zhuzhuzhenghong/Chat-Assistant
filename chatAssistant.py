@@ -983,7 +983,7 @@ class AssistantMainWindow(QMainWindow):
                         color: QColor = QColor(bg) 
                         if color.isValid(): 
                             if color.alpha() == 255:
-                                color.setAlpha(128)
+                                color.setAlpha(100)
                             # 同时设置 BackgroundRole 与 setBackground，避免样式优先级导致不生效
                             brush = QBrush(color)
                             script_item.setData(0, Qt.ItemDataRole.BackgroundRole, brush)

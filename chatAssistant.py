@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import (
     Qt, QTimer, QThread, QObject, Signal, QSize, QPropertyAnimation,
-    QEasingCurve, QRect, QPoint, Slot
+    QEasingCurve, QRect, QPoint, Slot, QEvent
 )
 from PySide6.QtGui import (
     QFont, QIcon, QPalette, QColor, QPixmap, QPainter, QBrush,
@@ -328,7 +328,7 @@ class AssistantMainWindow(QMainWindow):
         # 初始化拖拽相关属性
         self.drag_position = None
         self.resize_direction = None
-        self.resize_margin = 8  # 边缘调整大小的区域宽度
+        self.resize_margin = 4  # 边缘调整大小的区域宽度
         self.resize_start_pos = None
         self.resize_start_geometry = None
 
@@ -412,12 +412,20 @@ class AssistantMainWindow(QMainWindow):
 
         # 设置窗口图标（如果有的话）
         self.setWindowIcon(QIcon("static/icon/logo.png"))
+        # 启用鼠标跟踪与悬停事件，确保未按键时也能更新光标
+        self.setMouseTracking(True)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         # 关闭主窗口不退出，托盘常驻
         QApplication.setQuitOnLastWindowClosed(False)
 
         # 设置窗口置顶：窗口显示后延迟应用，确保句柄有效，避免 ERROR_INVALID_WINDOW_HANDLE(1400)
         if self.always_on_top:
             QTimer.singleShot(0, lambda: self.on_topmost_changed(self.always_on_top))
+        
+        # 安装事件过滤器，统一处理所有子部件的鼠标移动来更新光标
+        self.installEventFilter(self)
+        # 全局安装事件过滤器，兜底捕获所有控件的鼠标移动/悬停事件
+        QApplication.instance().installEventFilter(self)
 
     # <============================监控窗口相关方法==============================>
 
@@ -646,6 +654,9 @@ class AssistantMainWindow(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         central_widget.setObjectName("main_frame")
+        # 确保中央部件也启用鼠标跟踪与悬停事件，从而未按键时能收到 mouseMoveEvent/HoverMove
+        central_widget.setMouseTracking(True)
+        central_widget.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
 
         # 主布局
         main_layout = QVBoxLayout(central_widget)
@@ -654,6 +665,7 @@ class AssistantMainWindow(QMainWindow):
 
         # 创建自定义标题栏
         self.title_bar = CustomTitleBar()
+        self.title_bar.setMouseTracking(True)
         main_layout.addWidget(self.title_bar)
 
         # 连接标题栏信号
@@ -965,7 +977,7 @@ class AssistantMainWindow(QMainWindow):
         # 处理数据结构：话术标题 -> 话术内容列表
         for title_data in self.filtered_scripts:
             # 创建分类节点
-            category_item = QTreeWidgetItem([f"📁 {title_data['name']}"])
+            category_item = QTreeWidgetItem([f"{title_data['name']}"])
             category_item.setData(0, Qt.ItemDataRole.UserRole,
                                   {"type": "title", "id": title_data['id'], "name": title_data['name']})
             self.tree_widget.addTopLevelItem(category_item)
@@ -977,13 +989,13 @@ class AssistantMainWindow(QMainWindow):
                     content = (script_data.get('content') or '').strip()
                     base_text = f"{title} -- {content}" if title else content
                     display_text = base_text if len(base_text) <= 50 else base_text[:50] + "..."
-                    script_item = QTreeWidgetItem([f"💬 {display_text}"])
+                    script_item = QTreeWidgetItem([f"{display_text}"])
                     bg = (script_data.get('bgColor') or '').strip()
                     if bg:
                         color: QColor = QColor(bg) 
                         if color.isValid(): 
                             if color.alpha() == 255:
-                                color.setAlpha(100)
+                                color.setAlpha(80)
                             # 同时设置 BackgroundRole 与 setBackground，避免样式优先级导致不生效
                             brush = QBrush(color)
                             script_item.setData(0, Qt.ItemDataRole.BackgroundRole, brush)
@@ -1740,13 +1752,44 @@ class AssistantMainWindow(QMainWindow):
             self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def enterEvent(self, event):
-        """鼠标进入窗口事件"""
+        """鼠标进入窗口事件：进入后立即根据当前位置更新光标"""
+        try:
+            from PySide6.QtGui import QCursor
+            global_pos = QCursor.pos()
+            local_pos = self.mapFromGlobal(global_pos)
+            direction = self.get_resize_direction(local_pos)
+            self.update_cursor(direction)
+        except Exception:
+            pass
         super().enterEvent(event)
 
     def leaveEvent(self, event):
         """鼠标离开窗口事件"""
         self.setCursor(Qt.CursorShape.ArrowCursor)
         super().leaveEvent(event)
+        
+    def eventFilter(self, obj, event):
+        """统一事件过滤器：用于在未按键时也更新光标形状"""
+        try:
+            if event.type() in (QEvent.Type.MouseMove, QEvent.Type.HoverMove):
+                # 将事件位置映射到主窗口坐标系
+                if hasattr(event, 'position'):
+                    pos = event.position().toPoint()
+                elif hasattr(event, 'pos'):
+                    pos = event.pos()
+                else:
+                    pos = None
+                
+                if pos is not None:
+                    # 如果事件来自子控件，需要映射到主窗口坐标
+                    if isinstance(obj, QWidget):
+                        local_to_window = obj.mapTo(self, pos)
+                        direction = self.get_resize_direction(local_to_window)
+                        self.update_cursor(direction)
+                        return False
+        except Exception:
+            pass
+        return super().eventFilter(obj, event)
 
     def mousePressEvent(self, event):
         """鼠标按下事件 - 用于拖拽窗口或调整大小"""
@@ -1861,7 +1904,7 @@ class AssistantMainWindow(QMainWindow):
             elif add_type == 'script':
                 add_dialog.level_one_added_signal.connect(self.add_level_one_callback)
                 add_dialog.level_two_added_signal.connect(self.add_level_two_callback)
-                add_dialog.content_added_signal.connect(self.add_script_content_callback)
+                add_dialog.content_added_signal.connect(lambda level_two_id, content, title: self.add_script_content_with_color(level_two_id, content, title, getattr(add_dialog, 'selected_bg_color', '')))
 
             # 连接弹窗关闭信号
             add_dialog.accepted.connect(lambda: print("✅ 内容添加成功"))
@@ -1905,10 +1948,23 @@ class AssistantMainWindow(QMainWindow):
 
     def add_script_content_callback(self, level_two_id: str,
                                     script_content: str, script_title_value: str):
-        """添加话术内容回调"""
+        """添加话术内容回调（兼容旧逻辑，无颜色）"""
         try:
             if self.data_adapter:
-                success = self.data_adapter.add_script(level_two_id, content=script_content, title=script_title_value)
+                success = self.data_adapter.add_script(level_two_id, content=script_content, title=script_title_value, bgColor='')
+                if success:
+                    self.update_ui('add_script')
+                else:
+                    QMessageBox.warning(self, "警告", "添加失败")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"添加失败: {str(e)}")
+
+    def add_script_content_with_color(self, level_two_id: str,
+                                      script_content: str, script_title_value: str, bg_color: str):
+        """添加话术内容回调（包含背景色）"""
+        try:
+            if self.data_adapter:
+                success = self.data_adapter.add_script(level_two_id, content=script_content, title=script_title_value, bgColor=(bg_color or ''))
                 if success:
                     self.update_ui('add_script')
                 else:
@@ -1933,7 +1989,7 @@ class AssistantMainWindow(QMainWindow):
             elif edit_type == 'level_two':
                 edit_dialog.level_two_edited_signal.connect(self.edit_level_two_callback)
             elif edit_type == 'script':
-                edit_dialog.content_edited_signal.connect(self.edit_script_callback)
+                edit_dialog.content_edited_signal.connect(lambda script_id, new_value, script_title: self.edit_script_with_color(script_id, new_value, script_title, getattr(edit_dialog, 'selected_bg_color', None)))
 
             # 连接弹窗关闭信号
             edit_dialog.accepted.connect(lambda: print("✅ 编辑成功"))
@@ -1972,10 +2028,22 @@ class AssistantMainWindow(QMainWindow):
             QMessageBox.critical(self, "错误", f"编辑话术标题失败: {str(e)}")
 
     def edit_script_callback(self, script_id: int, new_value: str, script_title_value: str):
-        """编辑话术内容（使用 DataAdapter）"""
+        """编辑话术内容（兼容旧逻辑，不改颜色）"""
         try:
             if self.data_adapter:
                 success = self.data_adapter.edit_script(script_id, content=new_value, title=script_title_value)
+                if success:
+                    self.update_ui('edit_script')
+                else:
+                    QMessageBox.warning(self, "警告", "编辑失败：未找到该话术或ID无效")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"编辑话术内容失败: {str(e)}")
+
+    def edit_script_with_color(self, script_id: int, new_value: str, script_title_value: str, bg_color: Optional[str]):
+        """编辑话术内容（可修改背景色）"""
+        try:
+            if self.data_adapter:
+                success = self.data_adapter.edit_script(script_id, content=new_value, title=script_title_value, bgColor=bg_color)
                 if success:
                     self.update_ui('edit_script')
                 else:

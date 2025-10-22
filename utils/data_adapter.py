@@ -419,7 +419,7 @@ class DataAdapter:
             return True
         return False
 
-    def add_script(self, level_two_id: int, title: str, content: str, ) -> bool:
+    def add_script(self, level_two_id: int, title: str, content: str, bgColor: Optional[str] = None) -> bool:
         index_list = self.get_level_two_index(level_two_id)
         if len(index_list):
             type_index = index_list[0]
@@ -428,7 +428,8 @@ class DataAdapter:
             new_script = {
                 "id": utils.generate_id(),
                 "content": content,
-                "title": title
+                "title": title,
+                "bgColor": (bgColor or '')
             }
             self.scripts_data[type_index]['data'][level_one_index]['data'][level_two_index]['data'].append(new_script)
             self.save_local_scripts_data()
@@ -460,17 +461,22 @@ class DataAdapter:
             return True
         return False
 
-    def edit_script(self, script_id: int, title: Optional[str] = None, content: Optional[str] = None) -> bool:
+    def edit_script(self, script_id: int, title: Optional[str] = None, content: Optional[str] = None, bgColor: Optional[str] = None) -> bool:
         index_list = self.get_script_index(script_id)
         if len(index_list) > 0:
             type_index = index_list[0]
             level_one_index = index_list[1]
             level_two_index = index_list[2]
             script_index = index_list[3]
-            self.scripts_data[type_index]['data'][level_one_index]['data'][level_two_index]['data'][script_index][
-                'content'] = content
-            self.scripts_data[type_index]['data'][level_one_index]['data'][level_two_index]['data'][script_index][
-                'title'] = title
+            script_obj = self.scripts_data[type_index]['data'][level_one_index]['data'][level_two_index]['data'][script_index]
+            # 更新内容与标题
+            if content is not None:
+                script_obj['content'] = content
+            if title is not None:
+                script_obj['title'] = title
+            # 背景色：仅在提供时更新；None表示保持不变
+            if bgColor is not None:
+                script_obj['bgColor'] = (bgColor or '')
             self.save_local_scripts_data()
             return True
         return False

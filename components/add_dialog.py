@@ -11,7 +11,8 @@ from PySide6.QtWidgets import (
     QButtonGroup, QRadioButton, QCheckBox, QMessageBox, QFrame, QWidget
 )
 from PySide6.QtCore import Qt, Signal, QFile, QIODevice
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QIcon, QPixmap, QPainter, QPen
+from PySide6.QtCore import QSize
 from typing import Dict, List, Optional, Any
 
 from utils.data_adapter import DataAdapter
@@ -53,6 +54,10 @@ class AddDialog(QDialog):
         self._user_triggered_change = False
         self._setting_defaults = False  # 新增：标记是否正在设置默认值
         self._defaults_set = False  # 新增：标记默认值是否已设置
+        # 颜色选择（仅用于添加话术内容）
+        self.available_colors = ["#FF1361","#f83600", "#f9f047", "#0fd850", "#009efd" ,'#020f75',"#6713d2"]
+        self.selected_bg_color: Optional[str] = None
+        self.color_btn_group = None
 
         self.init_data()
         self.setup_ui()
@@ -159,6 +164,76 @@ class AddDialog(QDialog):
         self.script_title_input.setPlaceholderText("请输入话术标题...")
         form_layout.addRow("话术标题(选填):", self.script_title_input)
 
+        # 背景色选择（仅用于添加话术内容）
+        self.color_select_widget = QWidget()
+        color_layout = QHBoxLayout(self.color_select_widget)
+        color_layout.setContentsMargins(0, 0, 0, 0)
+        color_layout.setSpacing(2)
+        from PySide6.QtWidgets import QPushButton
+        self.color_btn_group = QButtonGroup()
+        self.color_btn_group.setExclusive(True)
+        # 将色块显示为正方形，并添加透明度（与实际展示一致）
+        def hex_to_rgba(hex_color: str, alpha: float = 0.6) -> str:
+            h = hex_color.lstrip('#')
+            r = int(h[0:2], 16)
+            g = int(h[2:4], 16)
+            b = int(h[4:6], 16)
+            return f"rgba({r}, {g}, {b}, {alpha})"
+        for idx, col in enumerate(self.available_colors):
+            btn = QPushButton()
+            btn.setCheckable(True)
+            # 保证严格正方形：固定/最小/最大尺寸，固定策略，清除内外边距与行高影响
+            from PySide6.QtWidgets import QSizePolicy
+            btn.setFixedSize(24, 24)
+            btn.setMinimumSize(24, 24)
+            btn.setMaximumSize(24, 24)
+            btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            btn.setContentsMargins(0, 0, 0, 0)
+            rgba = hex_to_rgba(col, 0.5)
+            # 去掉边框（提升优先级避免全局样式覆盖），设置行高确保正方形不被撑开
+            btn.setStyleSheet(
+                f"QPushButton{{background:{rgba}; border:none !important; border-radius:0; padding:0; line-height:24px;}}"
+                f" QPushButton:checked{{border:none !important;}}"
+            )
+            self.color_btn_group.addButton(btn, idx)
+            color_layout.addWidget(btn)
+            # 选中时显示静态资源中的勾图标，未选中不显示（加入存在性校验与尺度适配）
+            def on_toggled(checked, b=btn):
+                from PySide6.QtGui import QIcon, QPixmap
+                from PySide6.QtCore import QSize, Qt
+                icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "icon", "duihao.png")
+                if checked:
+                    try:
+                        if os.path.exists(icon_path):
+                            pix = QPixmap(icon_path)
+                            if not pix.isNull():
+                                pix = pix.scaled(18, 18, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                                b.setIcon(QIcon(pix))
+                                b.setIconSize(QSize(18, 18))
+                            else:
+                                b.setIcon(QIcon())
+                        else:
+                            # 路径不存在则清空图标，避免误导
+                            b.setIcon(QIcon())
+                    except Exception:
+                        b.setIcon(QIcon())
+                else:
+                    b.setIcon(QIcon())
+            btn.toggled.connect(on_toggled)
+        # 默认不选中任何颜色
+        def on_color_clicked(button):
+            bid = self.color_btn_group.id(button)
+            if 0 <= bid < len(self.available_colors):
+                self.selected_bg_color = self.available_colors[bid]
+        self.color_btn_group.buttonClicked.connect(on_color_clicked)
+        form_layout.addRow("选择背景色:", self.color_select_widget)
+        # 初始不显示（默认是添加一级分类），仅在选择“添加话术内容”或编辑脚本时显示
+        try:
+            self.color_select_widget.setVisible(False)
+            self.hide_label_by_text("选择背景色:")
+        except Exception:
+            pass
+
         # 话术内容输入
         self.content_input = QTextEdit()
         self.content_input.setMinimumHeight(120)
@@ -237,6 +312,8 @@ class AddDialog(QDialog):
             self.level_two_input.setVisible(False)
             self.script_title_input.setVisible(False)
             self.content_input.setVisible(False)
+            if hasattr(self, 'color_select_widget'):
+                self.color_select_widget.setVisible(False)
 
             # 隐藏对应的标签
             self.hide_label_by_text("选择一级分类:")
@@ -244,6 +321,7 @@ class AddDialog(QDialog):
             self.hide_label_by_text("二级分类名称:")
             self.hide_label_by_text("话术标题(选填):")
             self.hide_label_by_text("话术内容:")
+            self.hide_label_by_text("选择背景色:")
 
             # 显示需要的控件
             self.script_type_combo.setVisible(True)
@@ -259,12 +337,15 @@ class AddDialog(QDialog):
             self.level_one_input.setVisible(False)
             self.script_title_input.setVisible(False)
             self.content_input.setVisible(False)
+            if hasattr(self, 'color_select_widget'):
+                self.color_select_widget.setVisible(False)
 
             # 隐藏对应的标签
             self.hide_label_by_text("选择二级分类:")
             self.hide_label_by_text("一级分类名称:")
             self.hide_label_by_text("话术标题(选填):")
             self.hide_label_by_text("话术内容:")
+            self.hide_label_by_text("选择背景色:")
 
             # 显示需要的控件
             self.script_type_combo.setVisible(True)
@@ -284,6 +365,10 @@ class AddDialog(QDialog):
             # 隐藏不需要的控件
             self.level_one_input.setVisible(False)
             self.level_two_input.setVisible(False)
+            # 显示颜色选择
+            if hasattr(self, 'color_select_widget'):
+                self.color_select_widget.setVisible(True)
+            self.show_label_by_text("选择背景色:")
 
             # 隐藏不需要的标签
             self.hide_label_by_text("一级分类名称:")
@@ -399,6 +484,7 @@ class AddDialog(QDialog):
                 # 添加话术内容
                 script_title_value = self.script_title_input.text().strip()
                 content = self.content_input.toPlainText().strip()
+                bg_color = (self.selected_bg_color or "").strip()
 
                 if not type_id:
                     QMessageBox.warning(self, "警告", "请选择话术类型！")
@@ -415,6 +501,7 @@ class AddDialog(QDialog):
                 if not content:
                     QMessageBox.warning(self, "警告", "请输入话术内容！")
                     return
+                # 背景色不强制选择，允许为空
 
                 # result = list(filter(lambda item: item['content'] == content,
                 #                      self.data_adapter.get_script_list(self.type_id, self.level_one_id,
@@ -423,6 +510,7 @@ class AddDialog(QDialog):
                 #     QMessageBox.warning(self, "警告", f"话术内容 '{content}' 已存在！")
                 #     return
 
+                # 通过对话框属性传递颜色，由主窗口连接时获取
                 self.content_added_signal.emit(level_two_id, content, script_title_value)
 
             # 成功添加后关闭对话框
@@ -474,12 +562,6 @@ class AddDialog(QDialog):
 
             elif self.edit_type == 'script':
                 # 编辑话术内容
-                # result = list(filter(lambda item: item['content'] == new_value,
-                #                      self.data_adapter.get_script_list(self.type_id, self.level_one_id,
-                #                                                        self.level_two_id)))
-                # if len(result) > 0:
-                #     QMessageBox.warning(self, "警告", f"话术 '{new_value}' 已存在！")
-                #     return
                 self.content_edited_signal.emit(self.script_id, new_value, script_title_value)
 
             # 成功编辑后关闭对话框
@@ -553,6 +635,10 @@ class AddDialog(QDialog):
             # 隐藏不需要的控件
             self.level_one_input.setVisible(False)
             self.level_two_input.setVisible(False)
+            # 显示颜色选择
+            if hasattr(self, 'color_select_widget'):
+                self.color_select_widget.setVisible(True)
+            self.show_label_by_text("选择背景色:")
 
             # 隐藏不需要的标签
             self.hide_label_by_text("一级分类名称:")
@@ -645,6 +731,23 @@ class AddDialog(QDialog):
             self.level_one_id = data.get("levelOneId", 0)
             self.level_two_id = data.get("levelTwoId", 0)
             self.script_id = data.get("id", 0)
+            # 编辑模式下显示颜色选择并回显已选颜色
+            if hasattr(self, 'color_select_widget'):
+                try:
+                    self.color_select_widget.setVisible(True)
+                    self.show_label_by_text("选择背景色:")
+                except Exception:
+                    pass
+            existing_color = (data.get("bgColor", "") or "").strip()
+            self.selected_bg_color = existing_color if existing_color else None
+            if existing_color and (existing_color in (self.available_colors or [])) and self.color_btn_group:
+                try:
+                    idx = self.available_colors.index(existing_color)
+                    btn = self.color_btn_group.button(idx)
+                    if btn:
+                        btn.setChecked(True)
+                except Exception:
+                    pass
 
         # 根据编辑类型设置UI
         if edit_type == 'level_one':

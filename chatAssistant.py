@@ -328,6 +328,9 @@ class ElideLabel(QLabel):
         self.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
 
     def set_full_text(self, text: str):
+        # 只保留第一行，去除换行后的内容
+        if text:
+            text = str(text).splitlines()[0]
         self._full_text = text or ""
         self._update_elide()
 
@@ -354,36 +357,36 @@ class ScriptRow(QWidget):
         self.content = content
         self.callbacks = callbacks or {}
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(0, 4, 0, 0)
         layout.setSpacing(0)
         # 保证整行有稳定的高度，避免被压缩导致文字上移/裁剪
-        self.setFixedHeight(26)
+        self.setFixedHeight(24)
         # 发送按钮放到最前面，并使用与header切换按钮一致的尺寸以便垂直对齐
         self.send_btn = QPushButton()
         self.send_btn.setIcon(QIcon("static/icon/fasong.png"))
         self.send_btn.setFlat(True)
         self.send_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.send_btn.setFixedSize(26, 26)
-        self.send_btn.setIconSize(QSize(26, 26))
+        self.send_btn.setFixedSize(24, 24)
+        self.send_btn.setIconSize(QSize(24, 24))
         # 发送按钮基础/行悬浮样式：默认透明，行悬浮时橙黄色背景
         self._send_base_style = "QPushButton{background: transparent; border:none;padding:0;}"
-        self._send_row_hover_style = "QPushButton{background:#8ec5fc; border:none; padding:0;}"
+        self._send_row_hover_style = "QPushButton{background:#e7ae0f; border:none; padding:0;}"
         self.send_btn.setStyleSheet(self._send_base_style)
         self.send_btn.clicked.connect(lambda: self.callbacks.get("on_send", lambda *_: None)(self.content))
         layout.addWidget(self.send_btn, 0, alignment=Qt.AlignmentFlag.AlignVCenter)
         # 左侧图标 + 标题容器（标题带用户自定义背景色）；无标题时不展示标题容器，只展示图标
         self.title_wrap = QWidget()
-        self.title_wrap.setFixedHeight(26)
+        self.title_wrap.setFixedHeight(24)
         title_wrap_layout = QHBoxLayout(self.title_wrap)
         title_wrap_layout.setContentsMargins(0,0,0,0)
-        title_wrap_layout.setSpacing(4)
+        title_wrap_layout.setSpacing(0)
         # 图标
         self.left_icon = QLabel()
-        self.left_icon.setFixedSize(26, 26)
+        self.left_icon.setFixedSize(24, 24)
         try:
             pix = QPixmap("static/icon/huashu.png")
             if not pix.isNull():
-                pix = pix.scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                pix = pix.scaled(24, 24, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
                 self.left_icon.setPixmap(pix)
         except Exception:
             pass
@@ -392,14 +395,33 @@ class ScriptRow(QWidget):
         self.title_label = None
         if (self.display_text or "").strip():
             self.title_label = ElideLabel()
-            self.title_label.setMinimumHeight(26)
+            self.title_label.setMinimumHeight(24)
             self.title_label.set_full_text(self.display_text)
             # 应用用户自定义背景色（若提供）
             if bg_color:
-                self._title_base_style = f"background:{bg_color}; padding:0px;margin-right:4px;"
+                try:
+                    # hex -> rgba 半透明
+                    if bg_color.startswith('#') and len(bg_color) == 7:
+                        r = int(bg_color[1:3], 16)
+                        g = int(bg_color[3:5], 16)
+                        b = int(bg_color[5:7], 16)
+                        self._title_base_style = f"background-color: rgba({r},{g},{b},0.5); padding:0 1px;color:#ffffff;"
+                    else:
+                        # 非 hex，退化为直接设置颜色并使用半透明效果（部分命名色不支持 alpha，这里保留原色）
+                        self._title_base_style = f"background-color: {bg_color}; padding:0 1px;color:#e7ae0f;"
+                except Exception:
+                    self._title_base_style = f"background-color: {bg_color}; padding:0 1px;color:#e7ae0f;"
             else:
-                self._title_base_style = "padding:0px; border-radius:4px;"
-            self.title_label.setStyleSheet(self._title_base_style)
+                self._title_base_style = "background-color: transparent;padding:0px;color:#ff6705;"
+            # 叠加脚本标题字体大小
+            try:
+                tree = self.parent()
+                while tree and not isinstance(tree, ScriptTree):
+                    tree = tree.parent()
+                title_size = getattr(tree, 'font_sizes', {}).get('script_title', 12) if tree else 12
+                self.title_label.setStyleSheet(self._title_base_style + f"; font-size: {title_size}px;")
+            except Exception:
+                self.title_label.setStyleSheet(self._title_base_style)
             title_wrap_layout.addWidget(self.title_label, 0, alignment=Qt.AlignmentFlag.AlignVCenter)
             layout.addWidget(self.title_wrap, 0, alignment=Qt.AlignmentFlag.AlignVCenter)
         else:
@@ -408,32 +430,58 @@ class ScriptRow(QWidget):
         
         # 内容标签容器（背景透明）
         self.content_wrap = QWidget()
-        self.content_wrap.setFixedHeight(26)
+        self.content_wrap.setFixedHeight(24)
         content_layout = QHBoxLayout(self.content_wrap)
         content_layout.setContentsMargins(0,0,0,0)
         content_layout.setSpacing(0)
         self.content_label = ElideLabel()
         self.content_label.setObjectName("tree_item_text")
-        self.content_label.setMinimumHeight(26)
-        self.content_label.setStyleSheet("background: transparent;")
+        self.content_label.setMinimumHeight(24)
+        # 应用脚本内容字体大小（从 ScriptTree 配置中获取），默认 12
+        try:
+            tree = self.parent()
+            while tree and not isinstance(tree, ScriptTree):
+                tree = tree.parent()
+            size = getattr(tree, 'font_sizes', {}).get('script_content', 12) if tree else 12
+            self.content_label.setStyleSheet(f"background: transparent; font-size: {size}px; color: #4a3b5c;")
+        except Exception:
+            self.content_label.setStyleSheet("background: transparent;")
         self.content_label.set_full_text(self.content or "")
         content_layout.addWidget(self.content_label, 1, alignment=Qt.AlignmentFlag.AlignVCenter)
+        # 根据当前字体大小动态调整行高，避免文字被裁剪，并确保文本垂直居中
+        try:
+            tree = self.parent()
+            while tree and not isinstance(tree, ScriptTree):
+                tree = tree.parent()
+            title_size = getattr(tree, 'font_sizes', {}).get('script_title', 12) if tree else 12
+            content_size = getattr(tree, 'font_sizes', {}).get('script_content', 12) if tree else 12
+            # 采用更大的缓冲，保证视觉居中且不裁剪
+            row_h = max(int(title_size), int(content_size), 12) + 16
+            # 行本身高度
+            self.setFixedHeight(row_h)
+            # 子容器高度一致
+            if getattr(self, 'title_wrap', None):
+                self.title_wrap.setFixedHeight(row_h)
+            if getattr(self, 'content_wrap', None):
+                self.content_wrap.setFixedHeight(row_h)
+            # 标签高度与行高一致，确保垂直居中显示
+            if getattr(self, 'title_label', None):
+                self.title_label.setMinimumHeight(row_h)
+                self.title_label.setFixedHeight(row_h)
+            if getattr(self, 'content_label', None):
+                self.content_label.setMinimumHeight(row_h)
+                self.content_label.setFixedHeight(row_h)
+            # 左侧图标与发送按钮也设为相同行高以便居中（图标本身24px，不强制缩放）
+            if getattr(self, 'left_icon', None):
+                self.left_icon.setFixedHeight(row_h)
+            if getattr(self, 'send_btn', None):
+                self.send_btn.setFixedHeight(row_h)
+        except Exception:
+            pass
         layout.addWidget(self.content_wrap, 1, alignment=Qt.AlignmentFlag.AlignVCenter)
         
-        # 悬浮2秒后显示预览的定时器（单次）
+        # 移除 tooltip 功能：不再使用悬浮延时提示
         self._hovering = False
-        self._hover_tip_timer = QTimer(self)
-        self._hover_tip_timer.setSingleShot(True)
-        self._hover_tip_timer.setInterval(2000)
-        def _show_delayed_tip():
-            try:
-                if getattr(self, "_hover_alive", True) and self._hovering:
-                    from PyQt6.QtWidgets import QToolTip
-                    from PyQt6.QtGui import QCursor
-                    QToolTip.showText(QCursor.pos(), self.full_text, self)
-            except Exception:
-                pass
-        self._hover_tip_timer.timeout.connect(_show_delayed_tip)
 
         # 避免销毁后定时回调触发异常
         try:
@@ -447,31 +495,12 @@ class ScriptRow(QWidget):
         try:
             self._hover_alive = True
             self.destroyed.connect(lambda *_: setattr(self, "_hover_alive", False))
-            for w in [
-                self,
-                self.send_btn,
-                self.left_icon,
-                getattr(self, 'title_wrap', None),
-                getattr(self, 'content_wrap', None),
-                getattr(self, 'title_label', None),
-                getattr(self, 'content_label', None),
-            ]:
+            # 精简事件过滤器安装，仅对核心容器安装，减少冲突与复杂度
+            for w in [self, getattr(self, 'title_wrap', None), getattr(self, 'content_wrap', None)]:
                 if w:
                     w.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
                     w.setMouseTracking(True)
                     w.installEventFilter(self)
-            # 监听祖先容器的尺寸/布局变化，确保缩回时也触发省略计算
-            self._resize_watchers = []
-            def _install_resize_watchers(widget, depth=0):
-                if not widget or depth > 5:
-                    return
-                try:
-                    widget.installEventFilter(self)
-                    self._resize_watchers.append(widget)
-                except Exception:
-                    pass
-                _install_resize_watchers(widget.parentWidget(), depth+1)
-            _install_resize_watchers(self.parentWidget())
             # 自身也开启鼠标追踪，保证 HoverMove 可用
             self.setMouseTracking(True)
         except Exception:
@@ -494,22 +523,11 @@ class ScriptRow(QWidget):
         if et in (QEvent.Type.Enter, QEvent.Type.HoverEnter):
             self._set_hover(True)
             self._hovering = True
-            try:
-                self._hover_tip_timer.stop()
-                self._hover_tip_timer.start()
-            except Exception:
-                pass
         elif et in (QEvent.Type.HoverMove, QEvent.Type.MouseMove):
             # 保持悬浮状态，不重置计时器，避免一直推迟显示
             self._hovering = True
-            # 当鼠标在标题容器或内容容器内移动时也保持 hover 状态
-            try:
-                from PyQt6.QtGui import QCursor
-                pos = self.mapFromGlobal(QCursor.pos())
-                if self.title_wrap.rect().contains(self.title_wrap.mapFromParent(pos)) or self.content_wrap.rect().contains(self.content_wrap.mapFromParent(pos)):
-                    self._set_hover(True)
-            except Exception:
-                pass
+            # 统一在行内移动时保持 hover，高亮内容容器
+            self._set_hover(True)
         elif et in (QEvent.Type.Leave, QEvent.Type.HoverLeave):
             # 子控件之间切换会产生 HoverLeave，这里判断鼠标是否仍在整行内部，若还在则不当作离开
             try:
@@ -520,24 +538,28 @@ class ScriptRow(QWidget):
                 pass
             self._set_hover(False)
             self._hovering = False
-            try:
-                self._hover_tip_timer.stop()
-                from PyQt6.QtWidgets import QToolTip
-                QToolTip.hideText()
-            except Exception:
-                pass
         return super().eventFilter(obj, event)
 
     def _set_hover(self, on: bool):
-        # 方案二：仅在内容容器(content_wrap)上显示 hover 背景；标题保持原样
+        # 将 hover 高亮同时作用到内容与（无自定义背景色的）标题区域
         try:
             if on:
                 if getattr(self, 'content_wrap', None):
-                    self.content_wrap.setStyleSheet("background: #e0c3fc;")
+                    self.content_wrap.setStyleSheet("background: #feedcb;")
+                # 标题：仅当未设置自定义背景色时才加同样的 hover 背景
+                if getattr(self, 'title_wrap', None):
+                    self.title_wrap.setStyleSheet("background: #feedcb;")
+                # 图标背景与内容一致
+                if getattr(self, 'left_icon', None):
+                    self.left_icon.setStyleSheet("background: #feedcb;")
                 self.send_btn.setStyleSheet(self._send_row_hover_style)
             else:
                 if getattr(self, 'content_wrap', None):
                     self.content_wrap.setStyleSheet("background: transparent;")
+                if getattr(self, 'title_wrap', None):
+                    self.title_wrap.setStyleSheet("background: transparent;")
+                if getattr(self, 'left_icon', None):
+                    self.left_icon.setStyleSheet("background: transparent;")
                 self.send_btn.setStyleSheet(self._send_base_style)
         except Exception:
             pass
@@ -564,14 +586,16 @@ class SectionWidget(QWidget):
         h.setSpacing(0)
         self.toggle_btn = QPushButton()
         self.toggle_btn.setFlat(True)
-        self.toggle_btn.setIcon(QIcon("static/icon/shouqi.png"))
+        self.toggle_btn.setIcon(QIcon("static/icon/zhankai.png"))
         self.toggle_btn.setIconSize(QSize(14, 14))
         self.toggle_btn.setFixedSize(18, 18)
         self.toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.toggle_btn.clicked.connect(self.toggle)
+        self._toggle_btn_basse_style = "QPushButton{background: #e6eff9; border:none;padding:0;}"
+        self.toggle_btn.setStyleSheet(self._toggle_btn_basse_style)
         h.addWidget(self.toggle_btn, 0, alignment=Qt.AlignmentFlag.AlignVCenter)
         self.title_label = QLabel(title_name)
-        self.title_label.setStyleSheet("font-weight:600;")
+        self.title_label.setStyleSheet("font-weight:bold; color:#212121;background: #e6eff9;padding:5px 0;")
         self.title_label.setMinimumHeight(20)
         h.addWidget(self.title_label, 1, alignment=Qt.AlignmentFlag.AlignVCenter)
         header.mouseDoubleClickEvent = lambda e: self.toggle()
@@ -593,7 +617,7 @@ class SectionWidget(QWidget):
     def toggle(self):
         self.expanded = not self.expanded
         self.body.setVisible(self.expanded)
-        self.toggle_btn.setIcon(QIcon("static/icon/shouqi.png" if self.expanded else "static/icon/zhankai.png"))
+        self.toggle_btn.setIcon(QIcon("static/icon/zhankai.png" if self.expanded else "static/icon/shouqi.png"))
         self.toggle_btn.setIconSize(QSize(14, 14))
 
 class ScriptTree(QWidget):
@@ -608,7 +632,7 @@ class ScriptTree(QWidget):
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         # 背景透明（不绘制viewport背景）
         self.scroll.setFrameShape(QFrame.NoFrame)
-        self.scroll.setStyleSheet("QScrollArea, QScrollArea > QWidget, QScrollArea > QWidget > QWidget { background: transparent; }")
+        self.scroll.setStyleSheet("QScrollArea, QScrollArea > QWidget, QScrollArea > QWidget > QWidget { background: #ffffff; }")
         layout.addWidget(self.scroll)
         self.container = QWidget()
         # 容器背景透明
@@ -620,9 +644,22 @@ class ScriptTree(QWidget):
         self.v.addStretch(1)
         self.scroll.setWidget(self.container)
         self.callbacks = {}
+        # 字体大小配置（默认值）；可通过 set_font_sizes 动态修改
+        self.font_sizes = {
+            'type': 12,
+            'level1': 12,
+            'level2': 12,
+            'section': 12,
+            'script_title': 12,
+            'script_content': 12,
+        }
 
     def set_callbacks(self, callbacks: dict):
         self.callbacks = callbacks or {}
+
+    def set_font_sizes(self, sizes: dict):
+        # 允许调用方传入部分或全部键，未提供的沿用默认
+        self.font_sizes.update({k: v for k, v in (sizes or {}).items() if isinstance(v, (int, float)) and v > 0})
 
     def clear(self):
         while self.v.count() > 1:
@@ -641,6 +678,11 @@ class ScriptTree(QWidget):
             section = SectionWidget(title_id, title_name, {
                 "on_context": lambda info, pos, tid=title_id: self._emit_context({"type": "title", "title_id": tid}, pos)
             })
+            # 应用 section 标题字体
+            try:
+                section.title_label.setStyleSheet(section.title_label.styleSheet() + f"; font-size: {self.font_sizes.get('section', 12)}px;")
+            except Exception:
+                pass
             for script in title_data.get('data') or []:
                 title = (script.get('title') or '').strip()
                 content = (script.get('content') or '').strip()
@@ -649,6 +691,19 @@ class ScriptTree(QWidget):
                     "on_send": lambda c: self.callbacks.get("on_script_send", lambda *_: None)(c),
                     "on_context": lambda info, pos, sid=script.get('id'): self._emit_context({"type": "script", "script_id": sid}, pos)
                 })
+                # 强制应用脚本内容与标题的字体大小，避免父链无法找到 ScriptTree 时回退到默认值
+                try:
+                    content_size = self.font_sizes.get('script_content', 12)
+                    row.content_label.setStyleSheet(f"background: transparent; font-size: {content_size}px; color: #212121;")
+                except Exception:
+                    pass
+                try:
+                    if getattr(row, 'title_label', None):
+                        title_size = self.font_sizes.get('script_title', 12)
+                        base = getattr(row, '_title_base_style', row.title_label.styleSheet() or '')
+                        row.title_label.setStyleSheet(base + f"; font-size: {title_size}px;")
+                except Exception:
+                    pass
                 section.add_row(row)
             self.v.insertWidget(self.v.count()-1, section)
 
@@ -1232,6 +1287,12 @@ class AssistantMainWindow(QMainWindow):
                 button_width = max(min_button_width, min(text_width + 10, max_button_width))
 
                 button.setFixedSize(button_width, button_height)
+                # 应用一级分类字体大小
+                try:
+                    size = getattr(self.script_tree, 'font_sizes', {}).get('level1', 12)
+                except Exception:
+                    size = 12
+                button.setStyleSheet(f"font-size: {size}px;")
 
                 # 检查是否需要换行
                 if x + button_width > container_width - margin and x > margin:
@@ -1720,6 +1781,8 @@ class AssistantMainWindow(QMainWindow):
                 # 新增：吸附初始化与信号接入
                 self.settings_dialog.dock_position_changed.connect(self.set_dock_position)
                 self.settings_dialog.dock_apps_changed.connect(self.set_dock_enabled_apps)
+                # 新增：界面字体大小信号接入（统一应用到 ScriptTree 的标题/内容字体）
+                self.settings_dialog.ui_font_size_changed.connect(self.apply_ui_font_size)
 
             # 新增：初始化吸附位置与可吸附软件
             if hasattr(self.settings_dialog, 'set_dock_config'):
@@ -1733,8 +1796,37 @@ class AssistantMainWindow(QMainWindow):
             self.settings_dialog.show()
             self.settings_dialog.raise_()
             self.settings_dialog.activateWindow()
+            # 初始化界面字体到弹窗（与 ScriptTree 当前配置同步）
+            try:
+                current_size = self.script_tree.font_sizes.get('script_content', 12)
+                # 设置下拉默认显示
+                if hasattr(self.settings_dialog, 'ui_page'):
+                    self.settings_dialog.ui_page.font_combo.setCurrentText(str(current_size))
+            except Exception:
+                pass
         except Exception as e:
             QMessageBox.critical(self, "错误", f"显示设置弹窗失败：{str(e)}")
+
+    def apply_ui_font_size(self, size: int):
+        """应用界面字体大小到脚本树"""
+        try:
+            if hasattr(self, 'script_tree') and self.script_tree:
+                # 同步调整一级分类、二级（section）、话术标题与内容的字体大小
+                self.script_tree.set_font_sizes({
+                    'level1': size,
+                    'section': size,
+                    'script_title': size,
+                    'script_content': size,
+                })
+                # 重新渲染以确保现有项立即应用新字体
+                try:
+                    callbacks = getattr(self.script_tree, 'callbacks', {})
+                    self.script_tree.render(self.filtered_scripts, callbacks)
+                except Exception:
+                    # 若渲染失败，至少触发界面刷新
+                    self.script_tree.update()
+        except Exception as e:
+            print(f"应用界面字体大小失败: {e}")
 
     def show_settings_menu(self):
         """显示设置菜单（整合了原菜单栏功能）"""

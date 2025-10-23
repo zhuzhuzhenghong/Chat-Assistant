@@ -55,7 +55,7 @@ class AddDialog(QDialog):
         self._setting_defaults = False  # 新增：标记是否正在设置默认值
         self._defaults_set = False  # 新增：标记默认值是否已设置
         # 颜色选择（仅用于添加话术内容）
-        self.available_colors = ["#FF1361","#f83600", "#f9f047", "#0fd850", "#009efd" ,'#020f75',"#6713d2"]
+        self.available_colors = ["#FF1361","#f83600", "#8B4513", "#0fd850", "#009efd" ,'#020f75',"#6713d2"]
         self.selected_bg_color: Optional[str] = None
         self.color_btn_group = None
 

@@ -161,6 +161,25 @@ class SendSettingsWidget(QWidget):
             self.mode_combo.setCurrentIndex(idx)
 
 
+class InterfaceSettingsWidget(QWidget):
+    """界面设置页：字体大小选择"""
+    font_size_changed = Signal(int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QFormLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
+
+        # 字体大小下拉框（选项：12、14、16、18）
+        self.font_combo = QComboBox()
+        self.font_combo.addItems(["12", "14", "16", "18"])  # 注意用户给了 12 141 16 18，纠正为 12 14 16 18
+        self.font_combo.setCurrentText("12")
+        layout.addRow(QLabel("字体大小"), self.font_combo)
+
+        # 信号
+        self.font_combo.currentTextChanged.connect(lambda t: self.font_size_changed.emit(int(t)))
+
 class SettingsDialog(QDialog):
     """设置弹窗：左侧菜单，右侧内容"""
     # 对外信号
@@ -169,6 +188,8 @@ class SettingsDialog(QDialog):
 
     # 新增：发送模式信号（与主窗口联动）
     send_mode_changed = Signal(str)  # "直接发送" | "添加到输入框" | "添加到剪贴板"
+    # 新增：界面字体大小变更信号（与主窗口联动）
+    ui_font_size_changed = Signal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -193,6 +214,9 @@ class SettingsDialog(QDialog):
         item2 = QListWidgetItem("吸附设置")
         item2.setData(Qt.ItemDataRole.UserRole, 1)
         self.menu.addItem(item2)
+        item3 = QListWidgetItem("界面设置")
+        item3.setData(Qt.ItemDataRole.UserRole, 2)
+        self.menu.addItem(item3)
         # 居中所有菜单项（批量设置）
         for i in range(self.menu.count()):
             it = self.menu.item(i)
@@ -205,9 +229,11 @@ class SettingsDialog(QDialog):
 
         self.dock_page = DockSettingsWidget()
         self.send_page = SendSettingsWidget()
+        self.ui_page = InterfaceSettingsWidget()
 
         self.stack.addWidget(self.send_page)
         self.stack.addWidget(self.dock_page)
+        self.stack.addWidget(self.ui_page)
 
         # 底部操作区（可选）
         right_wrap = QVBoxLayout()
@@ -265,6 +291,8 @@ class SettingsDialog(QDialog):
 
         # 新的发送模式信号
         self.send_page.send_mode_changed.connect(self.send_mode_changed.emit)
+        # 新的界面字体大小信号
+        self.ui_page.font_size_changed.connect(self.ui_font_size_changed.emit)
 
     def _load_stylesheet(self):
         try:

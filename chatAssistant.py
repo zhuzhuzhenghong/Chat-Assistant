@@ -9,7 +9,7 @@ import json
 import time
 import threading
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import logging
 import traceback
 import random
@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem, QGroupBox, QCheckBox, QComboBox, QFrame, QSplitter,
     QScrollArea, QTabWidget, QStatusBar, QMenuBar, QMenu, QMessageBox,
     QDialog, QDialogButtonBox, QProgressBar, QSpacerItem, QSizePolicy,
-    QLayout, QSystemTrayIcon
+    QLayout, QSystemTrayIcon,QStyledItemDelegate
 )
 from PySide6.QtCore import (
     Qt, QTimer, QThread, QObject, Signal, QSize, QPropertyAnimation,
@@ -33,7 +33,6 @@ from PySide6.QtGui import (
     QLinearGradient, QAction, QKeySequence, QCursor
 )
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
-
 # 导入原有模块
 import pyautogui
 import pyperclip
@@ -72,8 +71,9 @@ def setup_pyqt_exception_handling():
         # 调用原始异常钩子
         sys._excepthook(exctype, value, traceback_obj)
 
-        # 可选：如果希望程序继续运行，可以注释掉下面这行
-        sys.exit(1)
+        # 调试期不强制退出，避免因为轻微的 Hover/Tooltip 异常导致进程直接退出
+        # sys.exit(1)
+        return
 
     # 设置异常钩子
     sys.excepthook = pyqt_exception_hook
@@ -306,8 +306,7 @@ class ModernTreeWidget(QTreeWidget):
         self.setViewportMargins(0, 0, 0, 0)
 
 
-from PySide6.QtWidgets import QStyledItemDelegate
-from PySide6.QtGui import QPainter
+
 
 class ColorAwareDelegate(QStyledItemDelegate):
     """根据项的 BackgroundRole 主动绘制背景，避免被样式表覆盖"""
@@ -318,6 +317,351 @@ class ColorAwareDelegate(QStyledItemDelegate):
             painter.fillRect(option.rect, brush)
             painter.restore()
         super().paint(painter, option, index)
+
+# =================== 自绘“树形结构”组件 ===================
+class ElideLabel(QLabel):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._full_text = ""
+        self.setWordWrap(False)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+
+    def set_full_text(self, text: str):
+        self._full_text = text or ""
+        self._update_elide()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_elide()
+
+    def _update_elide(self):
+        try:
+            metrics = self.fontMetrics()
+            available = max(10, self.width())
+            elided = metrics.elidedText(self._full_text, Qt.TextElideMode.ElideRight, available)
+            super().setText(elided)
+        except Exception:
+            try:
+                super().setText(self._full_text)
+            except Exception:
+                pass
+
+class ScriptRow(QWidget):
+    def __init__(self, display_text: str, content: str, bg_color: Optional[str], callbacks: dict, parent=None):
+        super().__init__(parent)
+        self.display_text = display_text
+        self.content = content
+        self.callbacks = callbacks or {}
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        # 保证整行有稳定的高度，避免被压缩导致文字上移/裁剪
+        self.setFixedHeight(26)
+        # 发送按钮放到最前面，并使用与header切换按钮一致的尺寸以便垂直对齐
+        self.send_btn = QPushButton()
+        self.send_btn.setIcon(QIcon("static/icon/fasong.png"))
+        self.send_btn.setFlat(True)
+        self.send_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.send_btn.setFixedSize(26, 26)
+        self.send_btn.setIconSize(QSize(26, 26))
+        # 发送按钮基础/行悬浮样式：默认透明，行悬浮时橙黄色背景
+        self._send_base_style = "QPushButton{background: transparent; border:none;padding:0;}"
+        self._send_row_hover_style = "QPushButton{background:#8ec5fc; border:none; padding:0;}"
+        self.send_btn.setStyleSheet(self._send_base_style)
+        self.send_btn.clicked.connect(lambda: self.callbacks.get("on_send", lambda *_: None)(self.content))
+        layout.addWidget(self.send_btn, 0, alignment=Qt.AlignmentFlag.AlignVCenter)
+        # 左侧图标 + 标题容器（标题带用户自定义背景色）；无标题时不展示标题容器，只展示图标
+        self.title_wrap = QWidget()
+        self.title_wrap.setFixedHeight(26)
+        title_wrap_layout = QHBoxLayout(self.title_wrap)
+        title_wrap_layout.setContentsMargins(0,0,0,0)
+        title_wrap_layout.setSpacing(4)
+        # 图标
+        self.left_icon = QLabel()
+        self.left_icon.setFixedSize(26, 26)
+        try:
+            pix = QPixmap("static/icon/huashu.png")
+            if not pix.isNull():
+                pix = pix.scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                self.left_icon.setPixmap(pix)
+        except Exception:
+            pass
+        title_wrap_layout.addWidget(self.left_icon, 0, alignment=Qt.AlignmentFlag.AlignVCenter)
+        # 标题标签（使用用户自定义背景色），仅当有标题时才创建
+        self.title_label = None
+        if (self.display_text or "").strip():
+            self.title_label = ElideLabel()
+            self.title_label.setMinimumHeight(26)
+            self.title_label.set_full_text(self.display_text)
+            # 应用用户自定义背景色（若提供）
+            if bg_color:
+                self._title_base_style = f"background:{bg_color}; padding:0px;margin-right:4px;"
+            else:
+                self._title_base_style = "padding:0px; border-radius:4px;"
+            self.title_label.setStyleSheet(self._title_base_style)
+            title_wrap_layout.addWidget(self.title_label, 0, alignment=Qt.AlignmentFlag.AlignVCenter)
+            layout.addWidget(self.title_wrap, 0, alignment=Qt.AlignmentFlag.AlignVCenter)
+        else:
+            # 仅图标，无标题时仍添加图标容器，使布局对齐
+            layout.addWidget(self.title_wrap, 0, alignment=Qt.AlignmentFlag.AlignVCenter)
+        
+        # 内容标签容器（背景透明）
+        self.content_wrap = QWidget()
+        self.content_wrap.setFixedHeight(26)
+        content_layout = QHBoxLayout(self.content_wrap)
+        content_layout.setContentsMargins(0,0,0,0)
+        content_layout.setSpacing(0)
+        self.content_label = ElideLabel()
+        self.content_label.setObjectName("tree_item_text")
+        self.content_label.setMinimumHeight(26)
+        self.content_label.setStyleSheet("background: transparent;")
+        self.content_label.set_full_text(self.content or "")
+        content_layout.addWidget(self.content_label, 1, alignment=Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(self.content_wrap, 1, alignment=Qt.AlignmentFlag.AlignVCenter)
+        
+        # 悬浮2秒后显示预览的定时器（单次）
+        self._hovering = False
+        self._hover_tip_timer = QTimer(self)
+        self._hover_tip_timer.setSingleShot(True)
+        self._hover_tip_timer.setInterval(2000)
+        def _show_delayed_tip():
+            try:
+                if getattr(self, "_hover_alive", True) and self._hovering:
+                    from PyQt6.QtWidgets import QToolTip
+                    from PyQt6.QtGui import QCursor
+                    QToolTip.showText(QCursor.pos(), self.full_text, self)
+            except Exception:
+                pass
+        self._hover_tip_timer.timeout.connect(_show_delayed_tip)
+
+        # 避免销毁后定时回调触发异常
+        try:
+            self.destroyed.connect(lambda *_: QTimer.singleShot(0, lambda: None))
+        except Exception:
+            pass
+        # 行背景透明 + 悬停高亮（橙色）
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setStyleSheet("background: transparent;")
+        # 安全注册 hover 监听，并在销毁时清理
+        try:
+            self._hover_alive = True
+            self.destroyed.connect(lambda *_: setattr(self, "_hover_alive", False))
+            for w in [
+                self,
+                self.send_btn,
+                self.left_icon,
+                getattr(self, 'title_wrap', None),
+                getattr(self, 'content_wrap', None),
+                getattr(self, 'title_label', None),
+                getattr(self, 'content_label', None),
+            ]:
+                if w:
+                    w.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+                    w.setMouseTracking(True)
+                    w.installEventFilter(self)
+            # 监听祖先容器的尺寸/布局变化，确保缩回时也触发省略计算
+            self._resize_watchers = []
+            def _install_resize_watchers(widget, depth=0):
+                if not widget or depth > 5:
+                    return
+                try:
+                    widget.installEventFilter(self)
+                    self._resize_watchers.append(widget)
+                except Exception:
+                    pass
+                _install_resize_watchers(widget.parentWidget(), depth+1)
+            _install_resize_watchers(self.parentWidget())
+            # 自身也开启鼠标追踪，保证 HoverMove 可用
+            self.setMouseTracking(True)
+        except Exception:
+            pass
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            cb = self.callbacks.get("on_double")
+            if cb:
+                cb(self.content)
+        super().mouseDoubleClickEvent(event)
+
+    def contextMenuEvent(self, event):
+        cb = self.callbacks.get("on_context")
+        if cb:
+            cb({"type": "script"}, self.mapToGlobal(event.pos()))
+
+    def eventFilter(self, obj, event):
+        et = event.type()
+        if et in (QEvent.Type.Enter, QEvent.Type.HoverEnter):
+            self._set_hover(True)
+            self._hovering = True
+            try:
+                self._hover_tip_timer.stop()
+                self._hover_tip_timer.start()
+            except Exception:
+                pass
+        elif et in (QEvent.Type.HoverMove, QEvent.Type.MouseMove):
+            # 保持悬浮状态，不重置计时器，避免一直推迟显示
+            self._hovering = True
+            # 当鼠标在标题容器或内容容器内移动时也保持 hover 状态
+            try:
+                from PyQt6.QtGui import QCursor
+                pos = self.mapFromGlobal(QCursor.pos())
+                if self.title_wrap.rect().contains(self.title_wrap.mapFromParent(pos)) or self.content_wrap.rect().contains(self.content_wrap.mapFromParent(pos)):
+                    self._set_hover(True)
+            except Exception:
+                pass
+        elif et in (QEvent.Type.Leave, QEvent.Type.HoverLeave):
+            # 子控件之间切换会产生 HoverLeave，这里判断鼠标是否仍在整行内部，若还在则不当作离开
+            try:
+                from PyQt6.QtGui import QCursor
+                if self.rect().contains(self.mapFromGlobal(QCursor.pos())):
+                    return super().eventFilter(obj, event)
+            except Exception:
+                pass
+            self._set_hover(False)
+            self._hovering = False
+            try:
+                self._hover_tip_timer.stop()
+                from PyQt6.QtWidgets import QToolTip
+                QToolTip.hideText()
+            except Exception:
+                pass
+        return super().eventFilter(obj, event)
+
+    def _set_hover(self, on: bool):
+        # 方案二：仅在内容容器(content_wrap)上显示 hover 背景；标题保持原样
+        try:
+            if on:
+                if getattr(self, 'content_wrap', None):
+                    self.content_wrap.setStyleSheet("background: #e0c3fc;")
+                self.send_btn.setStyleSheet(self._send_row_hover_style)
+            else:
+                if getattr(self, 'content_wrap', None):
+                    self.content_wrap.setStyleSheet("background: transparent;")
+                self.send_btn.setStyleSheet(self._send_base_style)
+        except Exception:
+            pass
+
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+
+class SectionWidget(QWidget):
+    def __init__(self, title_id: str, title_name: str, callbacks: dict, parent=None):
+        super().__init__(parent)
+        self.title_id = title_id
+        self.title_name = title_name
+        self.callbacks = callbacks or {}
+        self.expanded = True
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
+        # header
+        header = QWidget()
+        header.setObjectName("section_header")
+        h = QHBoxLayout(header)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(0)
+        self.toggle_btn = QPushButton()
+        self.toggle_btn.setFlat(True)
+        self.toggle_btn.setIcon(QIcon("static/icon/shouqi.png"))
+        self.toggle_btn.setIconSize(QSize(14, 14))
+        self.toggle_btn.setFixedSize(18, 18)
+        self.toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.toggle_btn.clicked.connect(self.toggle)
+        h.addWidget(self.toggle_btn, 0, alignment=Qt.AlignmentFlag.AlignVCenter)
+        self.title_label = QLabel(title_name)
+        self.title_label.setStyleSheet("font-weight:600;")
+        self.title_label.setMinimumHeight(20)
+        h.addWidget(self.title_label, 1, alignment=Qt.AlignmentFlag.AlignVCenter)
+        header.mouseDoubleClickEvent = lambda e: self.toggle()
+        header.contextMenuEvent = lambda e: self.callbacks.get("on_context", lambda *_: None)({"type": "title", "title_id": self.title_id}, header.mapToGlobal(e.pos()))
+        self.main_layout.addWidget(header)
+        # body container
+        self.body = QWidget()
+        self.body_layout = QVBoxLayout(self.body)
+        # 调整为与header一致的左边距，让行首发送图标与收起/展开按钮垂直对齐
+        self.body_layout.setContentsMargins(0, 0, 0, 0)
+        self.body_layout.setSpacing(0)
+        self.main_layout.addWidget(self.body)
+        # spacer
+        # self.main_layout.addSpacing(4)
+
+    def add_row(self, row: QWidget):
+        self.body_layout.addWidget(row)
+
+    def toggle(self):
+        self.expanded = not self.expanded
+        self.body.setVisible(self.expanded)
+        self.toggle_btn.setIcon(QIcon("static/icon/shouqi.png" if self.expanded else "static/icon/zhankai.png"))
+        self.toggle_btn.setIconSize(QSize(14, 14))
+
+class ScriptTree(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0,0,0,0)
+        layout.setSpacing(0)
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        # 不要横向滚动条
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        # 背景透明（不绘制viewport背景）
+        self.scroll.setFrameShape(QFrame.NoFrame)
+        self.scroll.setStyleSheet("QScrollArea, QScrollArea > QWidget, QScrollArea > QWidget > QWidget { background: transparent; }")
+        layout.addWidget(self.scroll)
+        self.container = QWidget()
+        # 容器背景透明
+        self.container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.container.setStyleSheet("background: transparent;")
+        self.v = QVBoxLayout(self.container)
+        self.v.setContentsMargins(0, 0, 0, 0)
+        self.v.setSpacing(1)
+        self.v.addStretch(1)
+        self.scroll.setWidget(self.container)
+        self.callbacks = {}
+
+    def set_callbacks(self, callbacks: dict):
+        self.callbacks = callbacks or {}
+
+    def clear(self):
+        while self.v.count() > 1:
+            item = self.v.takeAt(0)
+            w = item.widget()
+            if w:
+                w.setParent(None)
+                w.deleteLater()
+
+    def render(self, sections: Optional[List[Dict[str, Any]]], callbacks: Dict[str, Any]):
+        self.set_callbacks(callbacks)
+        self.clear()
+        for title_data in sections or []:
+            title_id = title_data.get('id')
+            title_name = (title_data.get('name') or '').strip()
+            section = SectionWidget(title_id, title_name, {
+                "on_context": lambda info, pos, tid=title_id: self._emit_context({"type": "title", "title_id": tid}, pos)
+            })
+            for script in title_data.get('data') or []:
+                title = (script.get('title') or '').strip()
+                content = (script.get('content') or '').strip()
+                row = ScriptRow(title, content, (script.get('bgColor') or '').strip(), {
+                    "on_double": lambda c: self.callbacks.get("on_script_double", lambda *_: None)(c),
+                    "on_send": lambda c: self.callbacks.get("on_script_send", lambda *_: None)(c),
+                    "on_context": lambda info, pos, sid=script.get('id'): self._emit_context({"type": "script", "script_id": sid}, pos)
+                })
+                section.add_row(row)
+            self.v.insertWidget(self.v.count()-1, section)
+
+    def _emit_context(self, info: dict, global_pos):
+        cb = self.callbacks.get("on_context_menu")
+        if cb:
+            cb(info, global_pos)
+
+    def contextMenuEvent(self, event):
+        # 空白处右键
+        cb = self.callbacks.get("on_context_menu")
+        if cb:
+            cb({"type": "blank"}, self.mapToGlobal(event.pos()))
 
 class AssistantMainWindow(QMainWindow):
     """主窗口类"""
@@ -735,32 +1079,15 @@ class AssistantMainWindow(QMainWindow):
         tree_layout = QVBoxLayout(tree_group)
         tree_layout.setContentsMargins(0, 0, 0, 0)  # 大幅减少上边距
 
-        # 树形控件
-        self.tree_widget = ModernTreeWidget()
-        # 清除样式表以避免全局样式覆盖项背景
-        try:
-            self.tree_widget.setStyleSheet("")
-        except Exception:
-            pass
-        # 设置委托，优先使用项的 BackgroundRole 绘制背景
-        try:
-            self.tree_widget.setItemDelegate(ColorAwareDelegate(self.tree_widget))
-        except Exception:
-            pass
-        self.tree_widget.setHeaderHidden(True)
-        # 半透明背景（提升整体透明度），不覆盖单项自定义背景
-        try:
-            self.tree_widget.setStyleSheet(
-                "QTreeWidget { background-color: rgba(255, 255, 255, 128); }"
-                "QTreeWidget::item { background-color: transparent; }"
-            )
-        except Exception:
-            pass
-        self.tree_widget.itemDoubleClicked.connect(self.on_tree_double_click)
-        self.tree_widget.itemClicked.connect(self.on_tree_single_click)
-        self.tree_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.tree_widget.customContextMenuRequested.connect(self.show_tree_context_menu)
-        tree_layout.addWidget(self.tree_widget)
+        # 自绘树形结构替代原生 QTreeWidget
+        self.script_tree = ScriptTree()
+        tree_layout.addWidget(self.script_tree)
+        # 绑定回调，保持原交互不变：双击、按钮发送、右键菜单（分类/脚本/空白）
+        self.script_tree.set_callbacks({
+            "on_script_double": lambda c: self.send_script_text(c),
+            "on_script_send": lambda c: self.send_script_directly(c),
+            "on_context_menu": self._on_script_tree_context_menu
+        })
 
     def create_search_section(self, parent_layout):
         """创建搜索部分"""
@@ -972,45 +1299,16 @@ class AssistantMainWindow(QMainWindow):
                 self.load_current_scripts_data()
 
     def update_tree(self):
-        """更新树形列表"""
-        self.tree_widget.clear()
-        # 处理数据结构：话术标题 -> 话术内容列表
-        for title_data in self.filtered_scripts:
-            # 创建分类节点
-            category_item = QTreeWidgetItem([f"{title_data['name']}"])
-            category_item.setData(0, Qt.ItemDataRole.UserRole,
-                                  {"type": "title", "id": title_data['id'], "name": title_data['name']})
-            self.tree_widget.addTopLevelItem(category_item)
-
-            # 添加话术内容
-            if isinstance(title_data['data'], list):
-                for script_data in title_data['data']:
-                    title = (script_data.get('title') or '').strip()
-                    content = (script_data.get('content') or '').strip()
-                    base_text = f"{title} -- {content}" if title else content
-                    display_text = base_text if len(base_text) <= 50 else base_text[:50] + "..."
-                    script_item = QTreeWidgetItem([f"{display_text}"])
-                    bg = (script_data.get('bgColor') or '').strip()
-                    if bg:
-                        color: QColor = QColor(bg) 
-                        if color.isValid(): 
-                            if color.alpha() == 255:
-                                color.setAlpha(80)
-                            # 同时设置 BackgroundRole 与 setBackground，避免样式优先级导致不生效
-                            brush = QBrush(color)
-                            script_item.setData(0, Qt.ItemDataRole.BackgroundRole, brush)
-                            script_item.setBackground(0, brush)
-                        else: 
-                            print(f"无效颜色: {bg}")
-                        # script_item.setBackground(0, QBrush(QColor(bg)))
-                    script_item.setData(0, Qt.ItemDataRole.UserRole, {
-                        "type": "script",
-                        "id": script_data['id'],
-                        "content": script_data['content'],
-                        "title": script_data['title'],
-                    })
-                    category_item.addChild(script_item)
-            category_item.setExpanded(True)
+        """更新自绘树形列表"""
+        try:
+            callbacks = {
+                "on_script_double": lambda c: self.send_script_text(c),
+                "on_script_send": lambda c: self.send_script_directly(c),
+                "on_context_menu": self._on_script_tree_context_menu,
+            }
+            self.script_tree.render(self.filtered_scripts, callbacks)
+        except Exception as e:
+            print("渲染自绘树失败:", e)
 
     def update_login_status(self):
         """更新登录状态"""
@@ -1174,77 +1472,43 @@ class AssistantMainWindow(QMainWindow):
             script_content = data.get("content", "")
             self.send_script_text(script_content)
 
-    def show_tree_context_menu(self, position):
-        """显示树形控件右键菜单"""
-        item = self.tree_widget.itemAt(position)
-
+    def _on_script_tree_context_menu(self, info: dict, global_pos):
+        """自绘树的右键菜单回调：兼容原有“添加/修改/删除”逻辑"""
         menu = QMenu(self)
-
-        if not item:
-            # 点击空白区域的菜单
+        t = info.get("type")
+        if t == "blank":
             if not self.current_level_one_id:
                 return
-
             add_title_action = QAction("添加话术标题", self)
-            add_title_action.triggered.connect(
-                lambda checked: self.show_add_dialog('level_two', self.current_level_one_id))
+            add_title_action.triggered.connect(lambda checked: self.show_add_dialog('level_two', self.current_level_one_id))
             menu.addAction(add_title_action)
-
-            id_list = self.data_adapter.level_one_children_idList_byIds.get(
-                (self.current_type_id, self.current_level_one_id), [])
+            id_list = self.data_adapter.level_one_children_idList_byIds.get((self.current_type_id, self.current_level_one_id), [])
             if len(id_list) > 0:
                 add_script_action = QAction("添加话术", self)
-                add_script_action.triggered.connect(
-                    lambda checked: self.show_add_dialog('script', id_list[0]))
+                add_script_action.triggered.connect(lambda checked: self.show_add_dialog('script', id_list[0]))
                 menu.addAction(add_script_action)
-
-            menu.exec(self.tree_widget.mapToGlobal(position))
-            return
-
-        data = item.data(0, Qt.ItemDataRole.UserRole)
-
-        if not data:
-            print("🔍 item没有数据，返回")
-            return
-
-        if data.get("type") == "title":
+        elif t == "title":
             if self.is_search:
                 return
-                # 分类节点菜单
-            level_two_name = data.get("name")
-            level_two_id = data.get("id")
-
-            add_script_action = QAction("添加话术", self)
-            add_script_action.triggered.connect(
-                lambda checked: self.show_add_dialog('script', level_two_id))  # 2表示添加话术内容
-            menu.addAction(add_script_action)
-
-            menu.addSeparator()
-            edit_action = QAction("编辑话术标题", self)
-            edit_action.triggered.connect(
-                lambda checked=False: self.show_edit_dialog('level_two', level_two_id))
-            menu.addAction(edit_action)
-
+            title_id = info.get("title_id")
+            rename_action = QAction("修改话术标题名称", self)
+            rename_action.triggered.connect(lambda checked=False, tid=title_id: self.show_edit_dialog('level_two', tid))
             delete_action = QAction("删除话术标题", self)
-            delete_action.triggered.connect(
-                lambda checked=False: self.delete_level_two(level_two_id, level_two_name))
+            delete_action.triggered.connect(lambda checked=False, tid=title_id: self.delete_level_two(tid))
+            menu.addAction(rename_action)
             menu.addAction(delete_action)
-
-        elif data.get("type") == "script":
-            # 话术节点菜单
-            edit_action = QAction("编辑话术", self)
-            script_id = data['id']
-            content = data['content']
-
-            edit_action.triggered.connect(
-                lambda checked=False: self.show_edit_dialog('script', script_id))
-            menu.addAction(edit_action)
-
+        elif t == "script":
+            script_id = info.get("script_id")
+            edit_action = QAction("修改话术", self)
+            edit_action.triggered.connect(lambda checked=False, sid=script_id: self.show_edit_dialog('script', sid))
             delete_action = QAction("删除话术", self)
-            delete_action.triggered.connect(lambda checked=False: self.delete_script(script_id, content))
+            delete_action.triggered.connect(lambda checked=False, sid=script_id: self.delete_script(sid))
+            menu.addAction(edit_action)
             menu.addAction(delete_action)
-
-        menu.exec(self.tree_widget.mapToGlobal(position))
+        if menu.actions():
+            menu.exec(global_pos)
+        else:
+            return
 
     # <============================搜索框相关方法==============================>
 
@@ -1295,16 +1559,10 @@ class AssistantMainWindow(QMainWindow):
             return
 
         try:
-            if self.api_manager:
-                success = self.api_manager.send_text_to_window(
-                    self.target_window, script_content
-                )
-                if success:
-                    print("✅ 📤 话术已直接发送")
-                else:
-                    print("❌ 发送失败，请检查目标窗口")
-            else:
-                print("❌ API管理器未初始化")
+            # 直接使用本地发送逻辑，不依赖 APIManager
+            self.send_text_direct(script_content)
+            print("✅ 📤 话术已直接发送")
+            return
         except Exception as e:
             print(f"❌ 发送错误: {str(e)}")
 
@@ -2132,6 +2390,8 @@ class AssistantMainWindow(QMainWindow):
                 success = self.data_adapter.delete_script(script_id)
                 if success:
                     self.update_ui('delete_script')
+                else:
+                    QMessageBox.warning(self, "错误", "找不到要删除的话术！")
             except Exception as e:
                 print('ValueError', e)
                 QMessageBox.warning(self, "错误", "找不到要删除的话术！")
